@@ -12,6 +12,7 @@ from numpy.typing import NDArray
 from pyaudio import PyAudio, Stream, paInt16
 
 import numpy as np
+import pyfftw
 
 
 class SoundListenerSync:
@@ -148,6 +149,7 @@ def fourie_transform(data: bytes) -> NDArray[Any]:
         struct.unpack(f'{len(data) // 2}h', data),
         dtype=np.int16
     )
-    split_data = np.split(np.abs(np.fft.fft(data2)), 2)
+    fft_result: Any = pyfftw.builders.fft(data2)()
+    split_data = np.split(np.abs(fft_result), 2)
     fft = np.add(split_data[0], split_data[1][::-1])
     return fft
