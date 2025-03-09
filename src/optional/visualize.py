@@ -7,7 +7,7 @@ It is not an essential part of the whole project but helps to detect bugs.
 import sys
 from typing import Any
 
-from listener import fourie_transform
+from numpy.typing import NDArray
 
 mp_disabled: bool = False
 
@@ -48,9 +48,9 @@ class Visualizer:
         Visualizer.X_VALUES_MEMO[length] = result
         return result
 
-    def process(self, data: bytes) -> None:
+    def process(self, data: NDArray[Any]) -> None:
         """
-        Processes update of `data`.
+        Processes update of `data` which is a result from FFT function.
 
         Should be called every time new `data` is available.
         """
@@ -65,11 +65,12 @@ class Visualizer:
         if self.plt_initialized and len(plt.get_fignums()) == 0:
             sys.exit(0)
 
-        fft = fourie_transform(data)
-        self.graph = plt.plot(self.generate_x_values(
-            len(fft),
-            self.sampling_rate / 2),
-            fft,
+        self.graph = plt.plot(
+            self.generate_x_values(
+                len(data),
+                self.sampling_rate / 2
+            ),
+            data,
             color=(0, 0, 1)
         )[0]
 

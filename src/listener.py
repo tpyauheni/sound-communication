@@ -12,7 +12,7 @@ from numpy.typing import NDArray
 from pyaudio import PyAudio, Stream, paInt16
 
 import numpy as np
-import pyfftw
+import pyfftw  # type: ignore[import-untyped]
 
 
 class SoundListenerSync:
