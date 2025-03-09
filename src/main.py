@@ -5,7 +5,6 @@ Sound communication.
 import time
 from listener import SoundListener
 from soundcom.audio import SoundBatch
-# from soundcom.audioconsts import FREQ_INIT
 from optional.visualize import Visualizer
 
 
@@ -21,7 +20,7 @@ class SoundSender:
     def __init__(self) -> None:
         self.batch = SoundBatch()
         self.listener = SoundListener()
-        self.visualizer = Visualizer()
+        self.visualizer = Visualizer(self.listener.sync_listener.sampling_rate)
 
     def initialize_communication(self) -> None:
         """
@@ -30,9 +29,6 @@ class SoundSender:
         """
 
         while True:
-            # self.batch.add(FREQ_INIT)
-            # self.batch.add(10_000)
-
             self.batch.add(500)
             self.batch.add(1000)
             self.batch.add(1500)
@@ -68,8 +64,6 @@ class SoundSender:
                 self.visualizer.process(frame)
                 continue
 
-        # self.visualizer.process(data)
-
     def dispose(self) -> None:
         """
         Cleans up used resources.
@@ -92,7 +86,6 @@ def main() -> None:
     try:
         sender.listen_for_sounds()
         sender.initialize_communication()
-        # sender.transfer_retry(str_to_transfer)
     except KeyboardInterrupt:
         sender.dispose()
     except SystemExit as exc:

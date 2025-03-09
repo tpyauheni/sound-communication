@@ -5,10 +5,9 @@ It is not an essential part of the whole project but helps to detect bugs.
 """
 
 import sys
-import struct
 from typing import Any
 
-import numpy as np
+from listener import fourie_transform
 
 mp_disabled: bool = False
 
@@ -27,9 +26,10 @@ class Visualizer:
 
     graph: Any = None
     plt_initialized: bool = False
+    sampling_rate: int
 
-    def __init__(self) -> None:
-        pass
+    def __init__(self, sampling_rate: int) -> None:
+        self.sampling_rate = sampling_rate
 
     def generate_x_values(self, length: int, max_freq: float) -> list[float]:
         """
@@ -65,11 +65,13 @@ class Visualizer:
         if self.plt_initialized and len(plt.get_fignums()) == 0:
             sys.exit(0)
 
-        data2 = np.array(struct.unpack(f'{len(data) // 2}h', data))
-        split_data = np.split(np.abs(np.fft.fft(data2)), 2)
-        fft = np.add(split_data[0], split_data[1][::-1])
-        self.graph = plt.plot(self.generate_x_values(len(fft), 44100.0 / 2),
-                              fft, color=(0, 0, 1))[0]
+        fft = fourie_transform(data)
+        self.graph = plt.plot(self.generate_x_values(
+            len(fft),
+            self.sampling_rate / 2),
+            fft,
+            color=(0, 0, 1)
+        )[0]
 
         plt.show(block=False)
         plt.pause(0.001)

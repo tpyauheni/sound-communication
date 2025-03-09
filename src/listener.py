@@ -2,11 +2,16 @@
 Module which gets and processes input from the microphone.
 """
 
+import struct
+
 from math import ceil
 from threading import Thread
 from time import sleep
 from typing import Any
+from numpy.typing import NDArray
 from pyaudio import PyAudio, Stream, paInt16
+
+import numpy as np
 
 
 class SoundListenerSync:
@@ -68,8 +73,6 @@ class SoundListenerSync:
             self.frames_per_buffer * self.duration
         )):
             data: bytes = self.input_stream.read(self.frames_per_buffer)
-            # print(data)
-            # self.is_listening = False
             self.available_frames.append(data)
 
     def cleanup(self) -> None:
@@ -135,3 +138,16 @@ class SoundListener:
         frames: list[bytes] = self.sync_listener.available_frames
         self.sync_listener.available_frames = []
         return frames
+
+
+def fourie_transform(data: bytes) -> NDArray[Any]:
+    """
+    Performs fast Fourie transform on given microphone input `data`.
+    """
+    data2 = np.array(
+        struct.unpack(f'{len(data) // 2}h', data),
+        dtype=np.int16
+    )
+    split_data = np.split(np.abs(np.fft.fft(data2)), 2)
+    fft = np.add(split_data[0], split_data[1][::-1])
+    return fft
