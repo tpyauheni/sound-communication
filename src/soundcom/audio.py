@@ -133,7 +133,7 @@ got {volume:.2f}')
 
 class SoundBatch:
     """
-    Sound batch which is playing given sounds asynchronically (int another
+    Sound batch which is playing given sounds asynchronically (in another
     thread).
     """
 
@@ -154,7 +154,6 @@ class SoundBatch:
     def _sound_loop(self) -> None:
         while not self.is_disposing:
             if self.sync_batch.is_playing:
-                print('PROC')
                 self.sync_batch.process()
 
             sleep(0.001)

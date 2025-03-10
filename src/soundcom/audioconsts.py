@@ -42,6 +42,9 @@ FREQ_INIT: float = 46 * __STEP_HZ  # ~= 1985 Hz
 FREQ_CONTROL: float = 73 * __STEP_HZ  # = 3150 Hz
 # `FREQ_TRANSMIT` is used to indicate that all zeroes are being transmitted.
 FREQ_TRANSMIT: float = 59.5 * __STEP_HZ  # ~= 2567 Hz
+# `FREQ_COUNTER` bit is set if it was unset in the previous frequency group;
+# unset otherwise.
+FREQ_COUNTER: float = 86.5 * __STEP_HZ  # ~= 3733 Hz
 
 # Channel 1:
 CH1_FREQ_START: float = 100 * __STEP_HZ  # ~= 4315 Hz
@@ -52,14 +55,14 @@ CH1_TRANSFER_BITS: int = 8  # ends on 170 * __STEP_HZ ~= 7336 Hz
 # it is 190 not 180 on purpose
 CH2_FREQ_START: float = 190 * __STEP_HZ  # ~= 8199 Hz
 CH2_FREQ_STEP: float = 10 * __STEP_HZ
-CH2_TRANSFER_BITS: float = 8  # ends on 260 * __STEP_HZ ~= 11219 Hz
+CH2_TRANSFER_BITS: int = 8  # ends on 260 * __STEP_HZ ~= 11219 Hz
 
 # Channel 3:
 CH3_FREQ_START: float = 280 * __STEP_HZ  # ~= 12082 Hz
 CH3_FREQ_STEP: float = 10 * __STEP_HZ
-CH3_TRANSFER_BITS: float = 8  # ends on 350 * __STEP_HZ ~= 15103 Hz
+CH3_TRANSFER_BITS: int = 8  # ends on 350 * __STEP_HZ ~= 15103 Hz
 
 # Channel 4:
 CH4_FREQ_START: float = 370 * __STEP_HZ  # ~= 15966 Hz
 CH4_FREQ_STEP: float = 10 * __STEP_HZ
-CH4_TRANSFER_BITS: float = 4  # ends on 400 * __STEP_HZ ~= 17692 Hz
+CH4_TRANSFER_BITS: int = 4  # ends on 400 * __STEP_HZ ~= 17692 Hz
