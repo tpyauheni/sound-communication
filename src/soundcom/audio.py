@@ -111,7 +111,12 @@ got {volume:.2f}')
             for frequency in self.sounds:
                 samples[sample_i] += math.sin(
                     math.tau * sample_i * frequency / self.sampling_rate
-                ) * self.volume
+                ) * self.volume / len(self.sounds)
+
+        # samples: list[float] = []
+
+        # for i in range(samples_count):
+            # samples.append(math.tau * i)
 
         samples_arr: array[float] = array('f', samples)
         sampled_bytes: bytes = samples_arr.tobytes()
