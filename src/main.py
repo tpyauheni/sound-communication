@@ -202,7 +202,6 @@ class SoundSender:
         buffer: bytearray = bytearray()
         final_bit_buffer: list[bool] = []
         bit_buffer_add_variants: list[list[bool]] = []
-        warn_something_wrong: str | None = None
 
         silence_start: float | None = None
 
@@ -312,11 +311,6 @@ class SoundSender:
                         if sum(average_variant) != 0:
                             dont_change = True
 
-                            if warn_something_wrong is not None:
-                                print('WARNING:', warn_something_wrong)
-
-                        warn_something_wrong = None
-
                         # final_bit_buffer.extend(median_variant)
 
                         if len(final_bit_buffer) >= 8:
@@ -332,11 +326,6 @@ class SoundSender:
                             final_bit_buffer = final_bit_buffer[8:]
 
                         bit_buffer_add_variants.clear()
-
-                if set_bits[1] and sum(set_bits[2:]) > 0:
-                    warn_something_wrong = 'Received FREQ_TRANSMIT (used only \
-to indicate empty message) is used with non-empty message'
-                    continue
 
                 bit_buffer: list[bool] = []
 
