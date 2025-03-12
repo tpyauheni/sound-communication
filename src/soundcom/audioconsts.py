@@ -35,8 +35,6 @@ But for now:
 # frequencies after FFT become illegible.
 __STEP_HZ = 43.15068493150685
 
-# TODO: Fine-tune following constants:
-
 # Control constants that are not part of overall data communication.
 FREQ_INIT: float = 430 * __STEP_HZ  # ~= 1985 Hz
 FREQ_CONTROL: float = 410 * __STEP_HZ  # = 3150 Hz

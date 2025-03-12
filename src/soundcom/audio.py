@@ -68,6 +68,7 @@ got {volume:.2f}')
 
         If batch is already being played, queues it again.
         """
+
         if self.is_playing:
             self.play_queued = True
         else:
@@ -80,13 +81,14 @@ got {volume:.2f}')
 
         If `timeout` is <= 0.0 then it will never expire.
         """
+
         total_time: float = 0.0
 
         while self.is_playing:
             sleep(precision)
             total_time += precision
 
-            if timeout > 0.0 and total_time >= timeout:
+            if total_time >= timeout > 0.0:
                 return False
 
         return True
@@ -112,11 +114,6 @@ got {volume:.2f}')
                 samples[sample_i] += math.sin(
                     math.tau * sample_i * frequency / self.sampling_rate
                 ) * self.volume / len(self.sounds)
-
-        # samples: list[float] = []
-
-        # for i in range(samples_count):
-            # samples.append(math.tau * i)
 
         samples_arr: array[float] = array('f', samples)
         sampled_bytes: bytes = samples_arr.tobytes()

@@ -12,9 +12,18 @@ from listener import SoundListener, SoundListenerSync, fourie_transform
 from optional.visualize import Visualizer
 
 from soundcom.audio import SoundBatch
-from soundcom.audioconsts import *
+from soundcom.audioconsts import FREQ_TRANSMIT, FREQ_COUNTER, CH3_FREQ_START
+from soundcom.audioconsts import CH3_FREQ_STEP, CH3_TRANSFER_BITS
 
+# Treshold which is used to indicate whether bit is considered ON
+# If set too low, it may assume environmental noise as a sent bit.
+# If set too high, it may assume sent bit as environmental noise.
 TRESHOLD: float = 5.0 * 10**6
+
+# Amount of captures of microphone input buffer per second.
+# If set too high, there may not be enough data to perform an accurate FFT.
+# If set too low, it may skip batches of bits sent from other peer.
+INPUT_UPDATES_PER_SECOND: int = 9
 
 
 class SoundSender:
@@ -27,10 +36,12 @@ class SoundSender:
     visualizer: Visualizer
 
     def __init__(self, duration: float = 0.5) -> None:
+        frames_per_buffer: int = SoundListenerSync.DEFAULT_SAMPLING_RATE // \
+            INPUT_UPDATES_PER_SECOND
+
         self.batch = SoundBatch(duration=duration)
         self.listener = SoundListener(
-            frames_per_buffer=SoundListenerSync.DEFAULT_SAMPLING_RATE // (
-                4 + 1 + 4),
+            frames_per_buffer=frames_per_buffer,
         )
         self.visualizer = Visualizer(self.listener.sync_listener.sampling_rate)
 
@@ -39,61 +50,34 @@ class SoundSender:
         Performs initialization sequence. Generates cryptographic keys and
         exchanges them with another client.
         """
+        raise NotImplementedError('TODO')
 
-        while True:
-            self.batch.add(500)
-            self.batch.add(1000)
-            self.batch.add(1500)
-            self.batch.add(2000)
-            self.batch.play()
-            self.batch.wait()
-
-            self.batch.reset()
-            self.batch.add(500)
-            self.batch.add(1500)
-            self.batch.play()
-            self.batch.wait()
-
-            self.batch.reset()
-            self.batch.add(1500)
-            self.batch.add(2000)
-            self.batch.play()
-            time.sleep(10.0)
-
-            self.batch.reset()
-
-    def listen_for_sounds(self) -> None:
+    def _split_by_bits(self, buffer: str, bits: int) -> list[str]:
         """
-        Listens for sounds from other client.
+        Splits `buffer` by groups of equal size `bits`.
         """
-        self.listener.listen()
 
-        while True:
-            frames: list[bytes] = self.listener.pop_available_frames()
+        bit_groups: list[str] = []
+        bit_start: int = 0
 
-            if len(frames) > 0:
-                frame: bytes = frames[-1]
-                fft = fourie_transform(frame)
-                self.visualizer.process(fft)
+        while bit_start + 1 <= len(buffer):
+            bit_groups.append(
+                buffer[bit_start:bit_start + bits].zfill(bits))
+            bit_start += bits
 
-                x_values = self.visualizer.generate_x_values(len(fft), 20_000)
-                print_list: list[tuple[int, float, float]] = []
-
-                for i, x in enumerate(fft):
-                    # if frequency is less than 300
-                    if x_values[i] < 300:
-                        continue
-
-                    if x >= 10**6:
-                        print_list.append((i, x_values[i], x))
-
-                # if print_list:
-                #     print(print_list)
-
-                continue
+        return bit_groups
 
     def send_message(self, message: str, freq_start: float, freq_step: float,
                      bits: int) -> None:
+        """
+        Converts `message` to bytes (in UTF-8 encoding), splits them by `bits`
+        bits. And then sends resulting bytes using `SoundBatch`.
+
+        @param freq_start: Frequency of the first data bit in the channel.
+        @param freq_step: Frequency difference between any two nearest bits in
+        the channel.
+        """
+
         if bits > 8:
             raise ValueError('Bits should be at most 8')
 
@@ -104,13 +88,7 @@ class SoundSender:
             for bit in bin(byte)[2:].zfill(8):
                 message_bits += bit
 
-        message_bit_groups: list[str] = []
-        bit_start: int = 0
-
-        while bit_start + 1 <= len(message_bits):
-            message_bit_groups.append(
-                message_bits[bit_start:bit_start + bits].zfill(bits))
-            bit_start += bits
+        message_bit_groups: list[str] = self._split_by_bits(message_bits, bits)
 
         counter: bool = True
 
@@ -134,7 +112,7 @@ class SoundSender:
             self.batch.play()
             self.batch.wait()
 
-        # Send zero byte, indicating end of the string
+        # Send zero byte, indicating end of the message
         self.batch.add(FREQ_TRANSMIT)
 
         if counter:
@@ -145,10 +123,17 @@ class SoundSender:
         print('Message sent')
 
     def _nearest(self, array: list[float], value: float) -> float:
+        """
+        Returns a value of an element in the `array` which is the nearest to
+        `value`.
+        """
         return min(array, key=lambda x: abs(x - value))
 
     def _freq_plusminus(self, base_freq: float, plusminus: float
                         ) -> tuple[float, float]:
+        """
+        Returns tuple with two elements: `base_freq` ± `plusminus`.
+        """
         return (base_freq - plusminus, base_freq + plusminus)
 
     def reduce_noise(
@@ -159,6 +144,19 @@ class SoundSender:
             values: list[np.float64],
             fft: NDArray[Any],
     ) -> list[np.float64]:
+        """
+        Returns difference between every element of `values` and environmental
+        noise.
+
+        @param freq_step: Difference between two nearest data bit frequencies
+        in the channel.
+        @param frequencies: List of original frequencies to reduce noise from.
+        @param x_values: List of real frequencies on FFT.
+        @param values: List of FFT values nearest on `frequencies` list.
+        @param fft: List of original FFT values on `x_values` as frequency
+        list.
+        """
+
         # Off frequencies are frequencies that are supposed to be always off,
         # e.g. not included in overall transmission process.
         off_frequencies: list[tuple[float, float]] = [
@@ -185,8 +183,192 @@ class SoundSender:
 
         return reduced_noise_values
 
-    def receive_loop(self, freq_start: float, freq_step: float, bits: int
-                     ) -> None:
+    def _collapse_variants_average(
+        self,
+        bit_buffer_add_variants: list[list[bool]],
+        bits: int,
+    ) -> list[bool]:
+        ones: list[int] = [0 for _i in range(bits)]
+
+        for variant in bit_buffer_add_variants:
+            for i, bit in enumerate(variant):
+                if bit:
+                    ones[i] += 1
+
+        average_variant: list[bool] = []
+
+        for i, one_values in enumerate(ones):
+            one_value: float = one_values / len(
+                bit_buffer_add_variants)
+
+            if one_value > 0.5:
+                average_variant.append(True)
+            elif one_value < 0.5:
+                average_variant.append(False)
+            else:
+                print(f'UNSURE ABOUT BIT {i + 1}; ASSUMING `FALSE`')
+                average_variant.append(False)
+
+        return average_variant
+
+    def _collapse_variants_median(
+        self,
+        bit_buffer_add_variants: list[list[bool]],
+        _bits: int
+    ) -> list[bool]:
+        median_variant: list[bool] = bit_buffer_add_variants[
+            len(bit_buffer_add_variants) // 2
+        ]
+        return median_variant
+
+    def _collapse_variants(
+        self,
+        bit_buffer_add_variants: list[list[bool]],
+        bits: int
+    ) -> list[bool]:
+        return self._collapse_variants_average(bit_buffer_add_variants, bits)
+
+    def _update_listener(
+        self,
+        buffer: bytearray,
+        bit_buffer_add_variants: list[list[bool]],
+        final_bit_buffer: list[bool],
+        bits: int,
+    ) -> list[bool]:
+        """
+        Updates listener.
+
+        @param buffer: Byte buffer to which result will be appended to.
+        @param bit_buffer_add_variants: List of potential variants captured by
+            `_update_listener` from last counter bit change.
+        @param final_bit_buffer: Temporary list of bits to which result will
+            be appended on counter bit change.
+        """
+
+        if len(bit_buffer_add_variants) == 0:
+            return final_bit_buffer
+
+        final_variant: list[bool] = self._collapse_variants(
+            bit_buffer_add_variants,
+            bits,
+        )
+        final_bit_buffer.extend(final_variant)
+
+        if len(final_bit_buffer) >= 8:
+            buffer.append(
+                int(
+                    ''.join(
+                        [
+                            '01'[bit]
+                            for bit in final_bit_buffer[:8]
+                        ],
+                    ),
+                    2,
+                ),
+            )
+
+            final_bit_buffer = final_bit_buffer[8:]
+
+        bit_buffer_add_variants.clear()
+        return final_bit_buffer
+
+    def _update_receiver(
+        self,
+        buffer: bytearray,
+        bit_buffer_add_variants: list[list[bool]],
+        final_bit_buffer: list[bool],
+        frequencies: list[float],
+        freq_start: float,
+        freq_step: float,
+        bits: int,
+        prev_counter: bool,
+        frame: bytes,
+    ) -> tuple[bool, bool, list[bool]]:
+        """
+        Updates receiver.
+
+        # Returns
+        Tuple with three values:
+        - Value that will be specified as `prev_counter` on the next call.
+        - Was there no bits set on FFT.
+        - Modified `final_bit_buffer`.
+        """
+
+        fft = fourie_transform(frame)
+        self.visualizer.process(fft)
+
+        x_values = self.visualizer.generate_x_values(
+            len(fft),
+            self.listener.sync_listener.sampling_rate / 2,
+        )
+
+        nearest_freqs: list[int] = []
+
+        for freq in frequencies:
+            nearest_freqs.append(x_values.index(self._nearest(
+                x_values, freq)))
+
+        values: list[np.float64] = [fft[x] for x in nearest_freqs]
+
+        # reduced_noise_values: list[np.float64] = self.reduce_noise(
+        #     freq_step, $, x_values, values, fft)
+
+        set_bits: list[bool] = []
+
+        for value in values:
+            set_bits.append(bool(value >= TRESHOLD))
+
+        self.visualizer.process_bits(
+            set_bits,
+            freq_start,
+            freq_step,
+            bits,
+            TRESHOLD,
+        )
+
+        counter_now: bool = set_bits[0]
+        flush_buffer: bool = set_bits[1]
+
+        if counter_now != prev_counter:
+            final_bit_buffer = self._update_listener(
+                buffer,
+                bit_buffer_add_variants,
+                final_bit_buffer,
+                bits,
+            )
+            prev_counter = counter_now
+
+        if buffer and flush_buffer:
+            try:
+                print(buffer.decode('UTF-8'))
+            except UnicodeError:
+                print(buffer.hex())
+
+            buffer.clear()
+
+        bit_buffer: list[bool] = []
+
+        for bit in set_bits[2:]:
+            bit_buffer.append(bit)
+
+        no_message: bool = sum(set_bits) == 0
+
+        if not no_message:
+            bit_buffer_add_variants.append(bit_buffer)
+
+        return (prev_counter, no_message, final_bit_buffer)
+
+    def receive_loop(
+        self,
+        freq_start: float,
+        freq_step: float,
+        bits: int,
+    ) -> None:
+        """
+        Receives messages from other peer in an infinite loop.
+
+        If required libraries are installed, also shows visualization of FFT.
+        """
         self.listener.listen()
         frequencies: list[float] = [FREQ_COUNTER, FREQ_TRANSMIT]
 
@@ -195,9 +377,7 @@ class SoundSender:
 
         # Assuming sender already sent `False`, so it will accept `True` next.
         prev_counter: bool = False
-
-        # for bit in range(bits):
-        #     off_frequencies.append(freq_start + freq_step * bit + freq_step // 2)
+        connected: bool = False
 
         buffer: bytearray = bytearray()
         final_bit_buffer: list[bool] = []
@@ -209,7 +389,6 @@ class SoundSender:
             frames: list[bytes] = self.listener.pop_available_frames()
 
             while len(frames) > 0:
-                # start: float = time.time()
                 frame: bytes
 
                 if len(frames) > 10:
@@ -218,125 +397,36 @@ class SoundSender:
                 else:
                     frame = frames.pop(0)
 
-                fft = fourie_transform(frame)
-                # TODO: Show only needed frequenices in the visualizer
-                self.visualizer.process(fft)
+                new_conter, no_message, new_bit_buffer = self._update_receiver(
+                    buffer,
+                    bit_buffer_add_variants,
+                    final_bit_buffer,
+                    frequencies,
+                    freq_start,
+                    freq_step,
+                    bits,
+                    prev_counter,
+                    frame,
+                )
 
-                x_values = self.visualizer.generate_x_values(len(fft), 20_000)
+                final_bit_buffer = new_bit_buffer
 
-                nearest_freqs: list[int] = []
+                if not connected and prev_counter != new_conter:
+                    connected = True
 
-                for freq in frequencies:
-                    nearest_freqs.append(x_values.index(self._nearest(
-                        x_values, freq)))
+                prev_counter = new_conter
 
-                values: list[np.float64] = [fft[x] for x in nearest_freqs]
-
-                # reduced_noise_values: list[np.float64] = self.reduce_noise(
-                #     freq_step, frequencies, x_values, values, fft)
-
-                # print(no_noise_values)
-
-                set_bits: list[bool] = []
-
-                # for i, value in enumerate(reduced_noise_values):
-                for i, value in enumerate(values):
-                    set_bits.append(bool(value >= TRESHOLD))
-                    # if value >= 10**6:
-                    #     print(x_values[nearest_freqs[i]], f'{value:.2f}')
-
-                # for i, bit in enumerate(set_bits):
-                    # print(
-                    #     f'{int(x_values[nearest_freqs[i]])}: {bit}', end=', ')
-
-                # elapsed_time: float = time.time() - start
-                # print(f'{elapsed_time:.4f}ms')
-
-                self.visualizer.process_bits(set_bits, freq_start, freq_step,
-                                             bits, TRESHOLD)
-
-                if sum(set_bits) == 0:
+                if connected and no_message:
                     if silence_start is None:
                         silence_start = time.time()
-                        continue
-
-                    if silence_start - time.time() > 5.0:
+                    elif time.time() - silence_start >= 5.0:
+                        print('Disconnected')
+                        connected = False
+                        silence_start = None
                         prev_counter = False
-                        print('Counter was reset')
-
-                    continue
-
-                # print(''.join([str(1 if x else 0) for x in set_bits]))
-
-                counter_now: bool = set_bits[0]
-
-                if counter_now != prev_counter:
-                    prev_counter = counter_now
-                    dont_change: bool = False
-
-                    if len(bit_buffer_add_variants) == 0:
-                        dont_change = True
-
-                    ones: list[int] = [0 for _i in range(bits)]
-
-                    for variant in bit_buffer_add_variants:
-                        for i, bit in enumerate(variant):
-                            if bit:
-                                ones[i] += 1
-
-                    if not dont_change:
-                        average_variant: list[bool] = []
-
-                        for i, one_values in enumerate(ones):
-                            one_value: float = one_values / len(
-                                bit_buffer_add_variants)
-
-                            if one_value > 0.5:
-                                average_variant.append(True)
-                            elif one_value < 0.5:
-                                average_variant.append(False)
-                            else:
-                                print(f'UNSURE ABOUT BIT {i + 1};',
-                                      'ASSUMING `FALSE`')
-                                average_variant.append(False)
-
-                        # print(bit_buffer_add_variants, average_variant)
-                        final_bit_buffer.extend(average_variant)
-
-                        # median_variant: list[bool] = bit_buffer_add_variants[
-                        #     len(bit_buffer_add_variants) // 2]
-                        # print(''.join([str(1 if x else 0)
-                        #                for x in median_variant]))
-
-                        if sum(average_variant) != 0:
-                            dont_change = True
-
-                        # final_bit_buffer.extend(median_variant)
-
-                        if len(final_bit_buffer) >= 8:
-                            buffer.append(int(''.join(
-                                ['01'[bit] for bit in final_bit_buffer[:8]]),
-                                2))
-                            # TODO: UTF-8
-                            print(
-                                chr(buffer[-1]),
-                                buffer[-1],
-                                bin(buffer[-1])[2:].zfill(8),
-                            )
-                            final_bit_buffer = final_bit_buffer[8:]
-
+                        buffer.clear()
+                        final_bit_buffer.clear()
                         bit_buffer_add_variants.clear()
-
-                bit_buffer: list[bool] = []
-
-                for bit in set_bits[2:]:
-                    bit_buffer.append(bit)
-
-                bit_buffer_add_variants.append(bit_buffer)
-
-                # print({x_values[nearest_freqs[i]]: set_bits[i]
-                    #    for i in range(len(set_bits))})
-                # print(values, avg_noise)
 
     def dispose(self) -> None:
         """
@@ -405,7 +495,10 @@ def main() -> None:
             while True:
                 bitmask: str = input('Enter bitmask to play: ').zfill(6)
 
-                if len(bitmask) != 6 or bitmask.count('0') + bitmask.count('1') != 6:
+                if (
+                    len(bitmask) != 6 or
+                    bitmask.count('0') + bitmask.count('1') != 6
+                ):
                     print('Invalid bitmask')
                     continue
 
@@ -428,8 +521,6 @@ def main() -> None:
 
                 print('OK')
 
-        # sender.listen_for_sounds()
-        # sender.initialize_communication()
         sender.dispose()
     except KeyboardInterrupt:
         sender.dispose()
