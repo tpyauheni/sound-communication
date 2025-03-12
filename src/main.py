@@ -18,12 +18,12 @@ from soundcom.audioconsts import CH3_FREQ_STEP, CH3_TRANSFER_BITS
 # Treshold which is used to indicate whether bit is considered ON
 # If set too low, it may assume environmental noise as a sent bit.
 # If set too high, it may assume sent bit as environmental noise.
-TRESHOLD: float = 5.0 * 10**6
+TRESHOLD: float = 3.0 * 10**6
 
 # Amount of captures of microphone input buffer per second.
 # If set too high, there may not be enough data to perform an accurate FFT.
 # If set too low, it may skip batches of bits sent from other peer.
-INPUT_UPDATES_PER_SECOND: int = 9
+INPUT_UPDATES_PER_SECOND: int = 12
 
 
 class SoundSender:
@@ -34,16 +34,22 @@ class SoundSender:
     batch: SoundBatch
     listener: SoundListener
     visualizer: Visualizer
+    skip_frames: bool
 
-    def __init__(self, duration: float = 0.5) -> None:
+    def __init__(
+        self,
+        duration: float = 0.5,
+        skip_frames: bool = False,
+    ) -> None:
         frames_per_buffer: int = SoundListenerSync.DEFAULT_SAMPLING_RATE // \
             INPUT_UPDATES_PER_SECOND
 
         self.batch = SoundBatch(duration=duration)
         self.listener = SoundListener(
-            frames_per_buffer=frames_per_buffer,
+            frames_per_buffer=frames_per_buffer
         )
         self.visualizer = Visualizer(self.listener.sync_listener.sampling_rate)
+        self.skip_frames = skip_frames
 
     def initialize_communication(self) -> None:
         """
@@ -67,8 +73,13 @@ class SoundSender:
 
         return bit_groups
 
-    def send_message(self, message: str, freq_start: float, freq_step: float,
-                     bits: int) -> None:
+    def send_message(
+        self,
+        message: str,
+        freq_start: float,
+        freq_step: float,
+        bits: int,
+    ) -> None:
         """
         Converts `message` to bytes (in UTF-8 encoding), splits them by `bits`
         bits. And then sends resulting bytes using `SoundBatch`.
@@ -93,32 +104,30 @@ class SoundSender:
         counter: bool = True
 
         for group in message_bit_groups:
-            self.batch.reset()
+            freq_buffer: list[float] = []
 
             if group.count('1') == 0:
-                self.batch.add(FREQ_TRANSMIT)
+                freq_buffer.append(FREQ_TRANSMIT)
             else:
                 for i, bit in enumerate(group):
                     if bit == '1':
-                        self.batch.add(freq_start + freq_step * i)
+                        freq_buffer.append(freq_start + freq_step * i)
 
             if counter:
-                self.batch.add(FREQ_COUNTER)
-
-            print('Sending', group, counter)
+                freq_buffer.append(FREQ_COUNTER)
 
             counter = not counter
+            self.batch.enqueue(freq_buffer)
 
-            self.batch.play()
-            self.batch.wait()
+        freq_buffer: list[float] = []
 
         # Send zero byte, indicating end of the message
-        self.batch.add(FREQ_TRANSMIT)
+        freq_buffer.append(FREQ_TRANSMIT)
 
         if counter:
-            self.batch.add(FREQ_COUNTER)
+            freq_buffer.append(FREQ_COUNTER)
 
-        self.batch.play()
+        self.batch.enqueue(freq_buffer)
         self.batch.wait()
         print('Message sent')
 
@@ -282,7 +291,7 @@ class SoundSender:
         freq_step: float,
         bits: int,
         prev_counter: bool,
-        frame: bytes,
+        fft: NDArray[Any],
     ) -> tuple[bool, bool, list[bool]]:
         """
         Updates receiver.
@@ -293,9 +302,6 @@ class SoundSender:
         - Was there no bits set on FFT.
         - Modified `final_bit_buffer`.
         """
-
-        fft = fourie_transform(frame)
-        self.visualizer.process(fft)
 
         x_values = self.visualizer.generate_x_values(
             len(fft),
@@ -391,11 +397,17 @@ class SoundSender:
             while len(frames) > 0:
                 frame: bytes
 
-                if len(frames) > 10:
+                if len(frames) > 10 and self.skip_frames:
                     frame = frames.pop()
                     frames.clear()
+                    print('SKIPPING FRAMES TO SPEED UP')
                 else:
                     frame = frames.pop(0)
+
+                fft = fourie_transform(frame)
+
+                if len(frames) == 0:
+                    self.visualizer.process(fft)
 
                 new_conter, no_message, new_bit_buffer = self._update_receiver(
                     buffer,
@@ -406,7 +418,7 @@ class SoundSender:
                     freq_step,
                     bits,
                     prev_counter,
-                    frame,
+                    fft,
                 )
 
                 final_bit_buffer = new_bit_buffer
@@ -427,6 +439,8 @@ class SoundSender:
                         buffer.clear()
                         final_bit_buffer.clear()
                         bit_buffer_add_variants.clear()
+                else:
+                    silence_start = None
 
     def dispose(self) -> None:
         """
@@ -444,7 +458,7 @@ def main() -> None:
     and not imported in any other project.
     """
 
-    sender: SoundSender = SoundSender()
+    sender: SoundSender = SoundSender(duration=0.25)
     mode: str
 
     while True:
@@ -502,17 +516,17 @@ def main() -> None:
                     print('Invalid bitmask')
                     continue
 
-                sender.batch.reset()
+                freq_buffer: list[float] = []
 
                 for i, bit in enumerate(bitmask):
                     if bit == '0':
                         continue
 
-                    sender.batch.add(frequencies[i])
+                    freq_buffer.append(frequencies[i])
 
                 print('Playing... ', end='', flush=True)
 
-                sender.batch.play()
+                sender.batch.enqueue(freq_buffer)
 
                 try:
                     sender.batch.wait()

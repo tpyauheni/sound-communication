@@ -23,7 +23,7 @@ class SoundListenerSync:
     It does so in the current thread.
     """
 
-    DEFAULT_SAMPLING_RATE: int = 44100
+    DEFAULT_SAMPLING_RATE: int = 48000
 
     audio: PyAudio
     input_stream: Stream
@@ -152,7 +152,6 @@ def fourie_transform(data: bytes) -> NDArray[Any]:
         dtype=np.int16
     )
     fft_result: Any = pyfftw.builders.fft(data2)()
-    # fft_result: Any = np.fft.fft(data2)
     split_data = np.split(np.abs(fft_result), 2)
     fft = np.add(split_data[0], split_data[1][::-1])
     return fft
