@@ -36,10 +36,14 @@ But for now:
 __STEP_HZ = 43.15068493150685
 
 # Control constants that are not part of overall data communication.
-FREQ_INIT: float = 430 * __STEP_HZ  # ~= 1985 Hz
-FREQ_CONTROL: float = 410 * __STEP_HZ  # = 3150 Hz
+FREQ_INIT: float = 430 * __STEP_HZ  # ~= 18555 Hz
+# `FREQ_CONTROL` is used in following cases:
+# - if all other bits are off (excluding counter which may or may not be set)
+# then it is used to indicate end of the buffer;
+# - other usages are planned.
+FREQ_CONTROL: float = 410 * __STEP_HZ  # = 17692 Hz
 # `FREQ_TRANSMIT` is used to indicate that all zeroes are being transmitted.
-FREQ_TRANSMIT: float = 390 * __STEP_HZ  # ~= 2567 Hz
+FREQ_TRANSMIT: float = 390 * __STEP_HZ  # ~= 16829 Hz
 # `FREQ_COUNTER` bit is set if it was unset in the previous frequency group;
 # unset otherwise.
 FREQ_COUNTER: float = 370 * __STEP_HZ  # ~= 15966 Hz

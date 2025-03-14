@@ -8,12 +8,14 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
+from error_corrector import ErrorCorrector
 from listener import SoundListener, SoundListenerSync, fourie_transform
 from optional.visualize import Visualizer
 
 from soundcom.audio import SoundBatch
-from soundcom.audioconsts import FREQ_TRANSMIT, FREQ_COUNTER, CH3_FREQ_START
+from soundcom.audioconsts import FREQ_CONTROL, FREQ_TRANSMIT, FREQ_COUNTER
 from soundcom.audioconsts import CH3_FREQ_STEP, CH3_TRANSFER_BITS
+from soundcom.audioconsts import CH3_FREQ_START
 
 # Treshold which is used to indicate whether bit is considered ON
 # If set too low, it may assume environmental noise as a sent bit.
@@ -93,36 +95,42 @@ class SoundSender:
             raise ValueError('Bits should be at most 8')
 
         message_bytes: bytes = message.encode('UTF-8')
-        message_bits: str = ''
-
-        for byte in message_bytes:
-            for bit in bin(byte)[2:].zfill(8):
-                message_bits += bit
-
-        message_bit_groups: list[str] = self._split_by_bits(message_bits, bits)
-
         counter: bool = True
 
-        for group in message_bit_groups:
-            freq_buffer: list[float] = []
+        for chunked_bytes in ErrorCorrector.break_into_frames(message_bytes):
+            ec_bytes: bytes = ErrorCorrector(chunked_bytes).encode()
+            print(ec_bytes)
+            message_bits: str = ''
 
-            if group.count('1') == 0:
-                freq_buffer.append(FREQ_TRANSMIT)
-            else:
-                for i, bit in enumerate(group):
-                    if bit == '1':
-                        freq_buffer.append(freq_start + freq_step * i)
+            for byte in ec_bytes:
+                for bit in bin(byte)[2:].zfill(8):
+                    message_bits += bit
 
-            if counter:
-                freq_buffer.append(FREQ_COUNTER)
+            message_bit_groups: list[str] = self._split_by_bits(
+                message_bits,
+                bits,
+            )
 
-            counter = not counter
-            self.batch.enqueue(freq_buffer)
+            for group in message_bit_groups:
+                freq_buffer: list[float] = []
+
+                if group.count('1') == 0:
+                    freq_buffer.append(FREQ_TRANSMIT)
+                else:
+                    for i, bit in enumerate(group):
+                        if bit == '1':
+                            freq_buffer.append(freq_start + freq_step * i)
+
+                if counter:
+                    freq_buffer.append(FREQ_COUNTER)
+
+                counter = not counter
+                self.batch.enqueue(freq_buffer)
 
         freq_buffer: list[float] = []
 
-        # Send zero byte, indicating end of the message
-        freq_buffer.append(FREQ_TRANSMIT)
+        # Send `FREQ_CONTROL` to indicate end of the message
+        freq_buffer.append(FREQ_CONTROL)
 
         if counter:
             freq_buffer.append(FREQ_COUNTER)
@@ -316,8 +324,16 @@ class SoundSender:
 
         values: list[np.float64] = [fft[x] for x in nearest_freqs]
 
-        # reduced_noise_values: list[np.float64] = self.reduce_noise(
-        #     freq_step, $, x_values, values, fft)
+        # FIXME: NOISE REDUCTION IS INSECURE!!!
+        # UNDER RIGHT CIRCUMSTANCES ATTACKER CAN REWRITE ANY MESSAGE TO
+        # WHATEVER HE WANTS!
+        # values = self.reduce_noise(
+        #     freq_step,
+        #     frequencies,
+        #     x_values,
+        #     values,
+        #     fft,
+        # )
 
         set_bits: list[bool] = []
 
@@ -333,7 +349,8 @@ class SoundSender:
         )
 
         counter_now: bool = set_bits[0]
-        flush_buffer: bool = set_bits[1]
+        _empty_message: bool = set_bits[1]
+        flush_buffer: bool = set_bits[2]
 
         if counter_now != prev_counter:
             final_bit_buffer = self._update_listener(
@@ -344,23 +361,31 @@ class SoundSender:
             )
             prev_counter = counter_now
 
-        if buffer and flush_buffer:
+        if buffer and flush_buffer and sum(set_bits) == 1 + counter_now:
+            print_buffer: bytes = bytes(buffer)
+
             try:
-                print(buffer.decode('UTF-8'))
+                print_buffer = ErrorCorrector(print_buffer).decode()
+            except ValueError as exc:
+                print(exc)
+
+            try:
+                print(print_buffer.decode('UTF-8'))
             except UnicodeError:
-                print(buffer.hex())
+                print(print_buffer.hex())
 
             buffer.clear()
 
         bit_buffer: list[bool] = []
 
-        for bit in set_bits[2:]:
+        for bit in set_bits[3:]:
             bit_buffer.append(bit)
 
         no_message: bool = sum(set_bits) == 0
 
         if not no_message:
             bit_buffer_add_variants.append(bit_buffer)
+            print(''.join(['1' if bit else '0' for bit in set_bits]))
 
         return (prev_counter, no_message, final_bit_buffer)
 
@@ -376,7 +401,7 @@ class SoundSender:
         If required libraries are installed, also shows visualization of FFT.
         """
         self.listener.listen()
-        frequencies: list[float] = [FREQ_COUNTER, FREQ_TRANSMIT]
+        frequencies: list[float] = [FREQ_COUNTER, FREQ_TRANSMIT, FREQ_CONTROL]
 
         for bit in range(bits):
             frequencies.append(freq_start + freq_step * bit)
@@ -500,6 +525,7 @@ def main() -> None:
             frequencies: list[float] = [
                 FREQ_COUNTER,
                 FREQ_TRANSMIT,
+                FREQ_CONTROL,
                 *[
                     CH3_FREQ_START + CH3_FREQ_STEP * 2 * i
                     for i in range(CH3_TRANSFER_BITS // 2)

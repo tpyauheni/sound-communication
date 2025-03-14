@@ -9,7 +9,7 @@ from typing import Any
 
 from numpy.typing import NDArray
 
-from soundcom.audioconsts import FREQ_COUNTER, FREQ_TRANSMIT
+from soundcom.audioconsts import FREQ_COUNTER, FREQ_TRANSMIT, FREQ_CONTROL
 
 mp_disabled: bool = False
 
@@ -113,6 +113,7 @@ class Visualizer:
         frequencies: list[float] = [
             FREQ_COUNTER,
             FREQ_TRANSMIT,
+            FREQ_CONTROL,
             *[freq_start + i * freq_step for i in range(bits)],
         ]
 
