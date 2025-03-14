@@ -26,10 +26,11 @@ class Visualizer:
 
     X_VALUES_MEMO: dict[int, list[float]] = {}
 
-    graph: Any = None
+    main_graph: Any = None
+    freq_marks: list[Any] = []
+
     plt_initialized: bool = False
     sampling_rate: int
-    bits_processed: bool = False
 
     def __init__(self, sampling_rate: int) -> None:
         self.sampling_rate = sampling_rate
@@ -77,8 +78,8 @@ class Visualizer:
         if mp_disabled:
             return
 
-        if self.graph is not None:
-            self.graph.remove()
+        if self.main_graph is not None:
+            self.main_graph.remove()
 
         # if plot window is closed
         if self.plt_initialized and len(plt.get_fignums()) == 0:
@@ -89,7 +90,7 @@ class Visualizer:
             self.sampling_rate / 2
         )
 
-        self.graph = plt.plot(
+        self.main_graph = plt.plot(
             *self._cut_frequencies(
                 x_values,
                 data,
@@ -101,14 +102,16 @@ class Visualizer:
         plt.show(block=False)
         plt.pause(0.001)
         self.plt_initialized = True
-        self.bits_processed = False
 
     def process_bits(self, bits_set: list[bool], freq_start: float,
                      freq_step: float, bits: int, treshold: float) -> None:
-        # return
-
-        if mp_disabled or self.bits_processed:
+        if mp_disabled:
             return
+
+        for mark in self.freq_marks:
+            mark.remove()
+
+        self.freq_marks.clear()
 
         frequencies: list[float] = [
             FREQ_COUNTER,
@@ -119,10 +122,9 @@ class Visualizer:
 
         for i, bit in enumerate(bits_set):
             freq = frequencies[i]
-            plt.plot(
+            self.freq_marks.append(plt.plot(
                 [freq - 100, freq + 100],
                 [treshold, treshold],
                 color='#ff8000' if bit else '#0080ff',
-            )
+            )[0])
 
-        self.bits_processed = True

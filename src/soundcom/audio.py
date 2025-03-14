@@ -30,6 +30,8 @@ class SoundBatchSync:
     sampling_rate: int
     duration: float
 
+    first_batch_played: bool = False
+
     def __init__(self, volume: float = 1.0, sampling_rate: int = 44100,
                  duration: float = 0.25) -> None:
         if volume < 0.0 or volume > 1.0:
@@ -59,6 +61,10 @@ got {volume:.2f}')
 
         If batch is already being played, queues it again.
         """
+        if not self.first_batch_played:
+            print(f'First batch time (sender): {time.time()}')
+
+        self.first_batch_played = True
         self.output_stream.write(sample)
 
     def cleanup(self) -> None:

@@ -111,7 +111,10 @@ class SoundListener:
     def _sound_loop(self) -> None:
         while not self.is_disposing:
             if self.sync_listener.is_listening:
-                self.sync_listener.process()
+                try:
+                    self.sync_listener.process()
+                except OSError as exc:
+                    print(exc)
 
             sleep(0.001)
 
@@ -155,3 +158,4 @@ def fourie_transform(data: bytes) -> NDArray[Any]:
     split_data = np.split(np.abs(fft_result), 2)
     fft = np.add(split_data[0], split_data[1][::-1])
     return fft
+
