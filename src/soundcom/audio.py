@@ -12,7 +12,7 @@ import math
 import time
 from typing import Any
 
-from pyaudio import PyAudio, paFloat32, Stream
+from pyaudio import PyAudio, Stream, paInt16
 
 
 class SoundBatchSync:
@@ -47,7 +47,7 @@ got {volume:.2f}')
         self.audio = PyAudio()
         self.sampling_rate = sampling_rate
         self.output_stream = self.audio.open(
-            format=paFloat32,
+            format=paInt16,
             channels=1,
             rate=self.sampling_rate,
             output=True,
@@ -78,6 +78,7 @@ got {volume:.2f}')
         self.audio.terminate()
 
     def sample_frequencies(self, frequencies: list[float]) -> bytes:
+        print('Sampling:',frequencies)
         samples_count: int = int(self.sampling_rate * self.duration)
         samples: list[float] = [0.0 for _i in range(samples_count)]
 

@@ -31,45 +31,93 @@ But for now:
     Also may be '< FREQ_CONTROL'
 """
 
-# It is a constant which is used to show minimum step, less than which
-# frequencies after FFT become illegible.
-__STEP_HZ = 43.15068493150685
 
-# Control constants that are not part of overall data communication.
-FREQ_INIT: float = 430 * __STEP_HZ  # ~= 18555 Hz
-# `FREQ_CONTROL` is used in following cases:
-# - if all other bits are off (excluding counter which may or may not be set)
-# then it is used to indicate end of the buffer;
-# - other usages are planned.
-FREQ_CONTROL: float = 410 * __STEP_HZ  # = 17692 Hz
-# `FREQ_TRANSMIT` is used to indicate that all zeroes are being transmitted.
-FREQ_TRANSMIT: float = 390 * __STEP_HZ  # ~= 16829 Hz
-# `FREQ_COUNTER` bit is set if it was unset in the previous frequency group;
-# unset otherwise.
-FREQ_COUNTER: float = 370 * __STEP_HZ  # ~= 15966 Hz
+from typing import Any, Callable, Generator
 
-# Channel 1:
-CH1_FREQ_START: float = 100 * __STEP_HZ  # ~= 4315 Hz
-CH1_FREQ_STEP: float = 10 * __STEP_HZ
-CH1_TRANSFER_BITS: int = 8  # ends on 170 * __STEP_HZ ~= 7336 Hz
 
-# Channel 2:
-# it is 190 not 180 on purpose
-CH2_FREQ_START: float = 190 * __STEP_HZ  # ~= 8199 Hz
-CH2_FREQ_STEP: float = 10 * __STEP_HZ
-CH2_TRANSFER_BITS: int = 8  # ends on 260 * __STEP_HZ ~= 11219 Hz
+class Freq:
+    CHUNK_LENGTH: int = 4
+    CHUNKS_COUNT: int = 6
 
-# Channel 3:
-CH3_FREQ_START: float = 280 * __STEP_HZ  # ~= 12082 Hz
-CH3_FREQ_STEP: float = 10 * __STEP_HZ
-CH3_TRANSFER_BITS: int = 8  # ends on 350 * __STEP_HZ ~= 15103 Hz
+    # It is a constant which is used to show minimum step, less than which
+    # frequencies after FFT become illegible.
+    STEP_HZ: float = 46.875
+    CHANNEL_STEP: float = STEP_HZ * 2  # = 93.75 Hz
 
-# Channel 4 (overlaps with control bits, so don't use!):
-CH4_FREQ_START: float = 370 * __STEP_HZ  # ~= 15966 Hz
-CH4_FREQ_STEP: float = 10 * __STEP_HZ
-CH4_TRANSFER_BITS: int = 4  # ends on 400 * __STEP_HZ ~= 17692 Hz
+    CHANNELS: list[float] = [
+        1_875.0,
+        15_000.0,
+    ]
 
-# Channel 5:
-CH5_FREQ_START: float = 460 * __STEP_HZ  # ~= 19849 Hz
-CH5_FREQ_STEP: float = 10 * __STEP_HZ
-CH5_TRANSFER_BITS: int = 4  # ends on 490 * __STEP_HZ ~= 21575 Hz
+    _base_frequency: float = 0.0
+
+    def __init__(self, channel_id: int) -> None:
+        try:
+            self._base_frequency = self.CHANNELS[channel_id]
+        except IndexError:
+            raise ValueError(f'Expected `channel_id` to be a valid channel index.')
+
+    def data(self, chunk_index: int, value: list[bool]) -> float:
+        if chunk_index < 0 or chunk_index >= self.CHUNKS_COUNT:
+            raise ValueError(f'Parameter `chunk_index` must be in interval [0; {self.CHUNKS_COUNT})')
+
+        if not isinstance(value, list) or len(value) != self.CHUNK_LENGTH:
+            raise ValueError(f'Parameter `value` must be a list with length {self.CHUNK_LENGTH}')
+
+        variant_offset: int = int(''.join(['1' if x else '0' for x in value]), 2)
+        return self._base_frequency + 2 ** self.CHUNK_LENGTH * self.STEP_HZ * chunk_index + self.STEP_HZ * variant_offset
+
+    def data_list(self, data: list[list[bool]]) -> list[float]:
+        if not isinstance(data, list) or len(data) != self.CHUNKS_COUNT:
+            raise ValueError(f'Parameter `data` must be a list with length {self.CHUNKS_COUNT}')
+
+        result: list[float] = []
+
+        for i, bit_group in enumerate(data):
+            if not isinstance(bit_group, list) or len(bit_group) != self.CHUNK_LENGTH:
+                raise ValueError(f'Every element of parameter `data` must be a list with length {self.CHUNKS_COUNT}')
+
+            result.append(self.data(i, bit_group))
+
+        return result
+
+    def decompose_data_list(self, data: list[Any], checker_func: Callable[[Any], bool]) -> list[list[bool]]:
+        if not isinstance(data, list) or len(data) != self.CHUNKS_COUNT * self.CHUNK_LENGTH:
+            raise ValueError(f'Parameter `data` must be a list with length {self.CHUNKS_COUNT * self.CHUNK_LENGTH}')
+
+        result: list[list[bool]] = []
+
+        for i in range(self.CHUNKS_COUNT):
+            chunk: list[bool] = []
+
+            for j in range(self.CHUNK_LENGTH):
+                chunk.append(checker_func(data[i * self.CHUNK_LENGTH + j]))
+
+            result.append(chunk)
+
+        return result
+
+    def channel_data_size(self) -> float:
+        """
+        Returns size (in Hz) of all the data bits in the current channel.
+        """
+        return self.STEP_HZ * 2 ** self.CHUNK_LENGTH * self.CHUNKS_COUNT
+
+    def channel_size(self) -> float:
+        return self.channel_data_size() + self.STEP_HZ
+
+    def channel_range(self) -> tuple[float, float]:
+        return (self._base_frequency, self._base_frequency + self.channel_size())
+
+    def msg_bit(self) -> float:
+        # We are given frequency of last possible data bits combination in the last chunk + `STEP_HZ`
+        # so we just return it.
+        return self.channel_data_size()
+
+    def all(self) -> Generator[float]:
+        for chunk in range(self.CHUNKS_COUNT):
+            for part in range(self.CHUNK_LENGTH):
+                yield self._base_frequency + (chunk * self.CHUNK_LENGTH + part) * self.STEP_HZ
+
+        yield self.msg_bit()
+

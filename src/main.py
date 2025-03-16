@@ -13,9 +13,7 @@ from listener import SoundListener, SoundListenerSync, fourie_transform
 from optional.visualize import Visualizer
 
 from soundcom.audio import SoundBatch
-from soundcom.audioconsts import FREQ_CONTROL, FREQ_TRANSMIT, FREQ_COUNTER
-from soundcom.audioconsts import CH3_FREQ_STEP, CH3_TRANSFER_BITS
-from soundcom.audioconsts import CH3_FREQ_START
+from soundcom.audioconsts import Freq
 
 # Treshold which is used to indicate whether bit is considered ON
 # If set too low, it may assume environmental noise as a sent bit.
@@ -28,7 +26,7 @@ FIRST_BATCH_DELAY: float = 0.065
 # Amount of captures of microphone input buffer per second.
 # If set too high, there may not be enough data to perform an accurate FFT.
 # If set too low, it may skip batches of bits sent from other peer.
-INPUT_UPDATES_PER_SECOND: int = 30
+INPUT_UPDATES_PER_SECOND: float = SoundListenerSync.DEFAULT_SAMPLING_RATE / 1024.0
 
 
 class SoundSender:
@@ -39,6 +37,7 @@ class SoundSender:
     batch: SoundBatch
     listener: SoundListener
     visualizer: Visualizer
+    freq: Freq
     skip_frames: bool
     prev_batch_time: float | None
     cumulative_input: bytes
@@ -47,9 +46,10 @@ class SoundSender:
         self,
         duration: float = 0.5,
         skip_frames: bool = False,
+        channel_id: int = -1,
     ) -> None:
-        frames_per_buffer: int = SoundListenerSync.DEFAULT_SAMPLING_RATE // \
-            INPUT_UPDATES_PER_SECOND
+        frames_per_buffer: int = int(SoundListenerSync.DEFAULT_SAMPLING_RATE /
+            INPUT_UPDATES_PER_SECOND)
 
         self.batch = SoundBatch(duration=duration)
         self.listener = SoundListener(
@@ -57,6 +57,7 @@ class SoundSender:
             duration=duration,
         )
         self.visualizer = Visualizer(self.listener.sync_listener.sampling_rate)
+        self.freq = Freq(channel_id)
         self.skip_frames = skip_frames
         self.prev_batch_time = None
         self.cumulative_input = bytes()
@@ -68,98 +69,68 @@ class SoundSender:
         """
         raise NotImplementedError('TODO')
 
-    def _split_by_bits(self, buffer: str, bits: int) -> list[str]:
+    def _split_by_bits(self, buffer: list[bool]) -> list[list[bool]]:
         """
         Splits `buffer` by groups of equal size `bits`.
         """
 
-        bit_groups: list[str] = []
+        bit_groups: list[list[bool]] = []
         bit_start: int = 0
 
         while bit_start + 1 <= len(buffer):
             bit_groups.append(
-                buffer[bit_start:bit_start + bits].zfill(bits))
-            bit_start += bits
+                [
+                    True if x else False
+                    for x in buffer[bit_start:bit_start + self.freq.CHUNK_LENGTH]
+                ]
+            )
+            bit_start += self.freq.CHUNK_LENGTH
 
         return bit_groups
 
     def send_message(
         self,
         message: str,
-        freq_start: float,
-        freq_step: float,
-        bits: int,
     ) -> None:
         """
         Converts `message` to bytes (in UTF-8 encoding), splits them by `bits`
         bits. And then sends resulting bytes using `SoundBatch`.
-
-        @param freq_start: Frequency of the first data bit in the channel.
-        @param freq_step: Frequency difference between any two nearest bits in
-        the channel.
         """
 
-        if bits > 8:
-            raise ValueError('Bits should be at most 8')
-
-        self.batch.enqueue([FREQ_COUNTER, FREQ_TRANSMIT])
+        self.batch.enqueue([self.freq.msg_bit()])
 
         message_bytes: bytes = message.encode('UTF-8')
-        counter: bool = False
 
         # for chunked_bytes in ErrorCorrector.break_into_frames(message_bytes):
         for chunked_bytes in [message_bytes]:
             # ec_bytes: bytes = ErrorCorrector(chunked_bytes).encode()
             ec_bytes = chunked_bytes
             print(ec_bytes)
-            message_bits: str = ''
+            message_bits: list[bool] = []
 
             for byte in ec_bytes:
                 for bit in bin(byte)[2:].zfill(8):
-                    message_bits += bit
+                    message_bits.append(bit == '1')
 
-            message_bit_groups: list[str] = self._split_by_bits(
+            message_bit_groups: list[list[bool]] = self._split_by_bits(
                 message_bits,
-                bits,
             )
 
-            for group in message_bit_groups:
-                freq_buffer: list[float] = []
-
-                if group.count('1') == 0:
-                    freq_buffer.append(FREQ_TRANSMIT)
-                else:
-                    for i, bit in enumerate(group):
-                        if bit == '1':
-                            freq_buffer.append(freq_start + freq_step * i)
-
-                if counter:
-                    freq_buffer.append(FREQ_COUNTER)
-
-                counter = not counter
-                print(''.join([
-                    '1' if freq in freq_buffer else '0' for freq in [
-                        FREQ_COUNTER,
-                        FREQ_TRANSMIT,
-                        FREQ_CONTROL,
-                        freq_start,
-                        freq_start + freq_step,
-                        freq_start + freq_step * 2,
-                        freq_start + freq_step * 3,
-                    ]
-                ]))
+            while len(message_bit_groups) >= self.freq.CHUNKS_COUNT:
+                freq_buffer: list[float] = self.freq.data_list(message_bit_groups[:self.freq.CHUNKS_COUNT])
+                message_bit_groups = message_bit_groups[self.freq.CHUNKS_COUNT:]
+                print(freq_buffer)
                 self.batch.enqueue(freq_buffer)
 
-        freq_buffer: list[float] = []
+            if len(message_bit_groups) > 0:
+                for _i in range(self.freq.CHUNKS_COUNT - len(message_bit_groups)):
+                    message_bit_groups.append([False for _j in range(self.freq.CHUNK_LENGTH)])
 
-        # Send `FREQ_CONTROL` to indicate end of the message
-        freq_buffer.append(FREQ_CONTROL)
+                freq_buffer: list[float] = self.freq.data_list(message_bit_groups)
+                print(freq_buffer)
+                self.batch.enqueue(freq_buffer)
 
-        if counter:
-            freq_buffer.append(FREQ_COUNTER)
-
-        print(freq_buffer)
-        self.batch.enqueue(freq_buffer)
+        self.batch.enqueue([self.freq.msg_bit()])
         self.batch.wait()
         print('Message sent')
 
@@ -291,8 +262,12 @@ class SoundSender:
 
         set_bits: list[bool] = []
 
-        for value in values:
-            set_bits.append(bool(value >= treshold))
+        # `decompose_data_list` takes only data values so we exclude message bit
+        data_values: list[float] = values[:-1]
+
+        for chunk in self.freq.decompose_data_list(data_values, lambda x: x >= treshold):
+            for bit in chunk:
+                set_bits.append(bit)
 
         return set_bits
 
@@ -301,15 +276,17 @@ class SoundSender:
         fft: NDArray[Any],
         frequencies: list[float],
         frame: bytes,
+        treshold: float = INITIAL_TRESHOLD,
     ) -> None:
         set_bits: list[bool] = self._get_set_bits(
             fft,
             frequencies,
-            INITIAL_TRESHOLD,
+            treshold,
         )
-        ones: int = set_bits.count(True)
 
-        if ones < 2 or ones == len(set_bits):
+        message_bit = set_bits[-1]
+
+        if not message_bit:
             return
 
         self.prev_batch_time = time.time() - FIRST_BATCH_DELAY
@@ -321,12 +298,8 @@ class SoundSender:
         buffer: bytearray,
         final_bit_buffer: list[bool],
         frequencies: list[float],
-        freq_start: float,
-        freq_step: float,
-        bits: int,
-        prev_counter: bool,
         frame: bytes,
-    ) -> tuple[bool, bool, list[bool]]:
+    ) -> list[bool]:
         """
         Updates receiver.
 
@@ -344,7 +317,7 @@ class SoundSender:
 
         if time_elapsed < duration:
             self.cumulative_input += frame
-            return (prev_counter, True, final_bit_buffer)
+            return final_bit_buffer
 
         print(f'{(time_elapsed - duration):.2f}')
         self.prev_batch_time += duration
@@ -357,80 +330,47 @@ class SoundSender:
             TRESHOLD,
         )
 
+        message_bit: bool = set_bits[-1]
+
+        if message_bit:
+            print('End of message detected')
+
         self.visualizer.process(fft)
         self.visualizer.process_bits(
             set_bits,
-            freq_start,
-            freq_step,
-            bits,
+            self.freq,
             TRESHOLD,
         )
 
-        if set_bits.count(True) < 2:
-            return (prev_counter, True, final_bit_buffer)
-
-        counter_now: bool = set_bits[0]
-        _empty_message: bool = set_bits[1]
-        flush_buffer: bool = set_bits[2]
-
-        if counter_now != prev_counter or True:
-            final_bit_buffer = self._update_listener(
-                buffer,
-                set_bits,
-                final_bit_buffer,
-            )
-            prev_counter = counter_now
-
-        if buffer and flush_buffer and sum(set_bits) == 1 + counter_now:
-            print_buffer: bytes = bytes(buffer)
-
-            try:
-                print_buffer = ErrorCorrector(print_buffer).decode()
-            except ValueError as exc:
-                print(exc)
-
-            try:
-                print(print_buffer.decode('UTF-8'))
-            except UnicodeError:
-                print(print_buffer.hex())
-
-            buffer.clear()
+        final_bit_buffer = self._update_listener(
+            buffer,
+            set_bits,
+            final_bit_buffer,
+        )
 
         bit_buffer: list[bool] = []
 
         for bit in set_bits[3:]:
             bit_buffer.append(bit)
 
-        no_message: bool = sum(set_bits) <= counter_now
         final_bit_buffer.extend(bit_buffer)
         print(''.join(['1' if bit else '0' for bit in set_bits]))
-        return (prev_counter, no_message, final_bit_buffer)
+        return final_bit_buffer
 
     def receive_loop(
         self,
-        freq_start: float,
-        freq_step: float,
-        bits: int,
     ) -> None:
         """
         Receives messages from other peer in an infinite loop.
 
         If required libraries are installed, also shows visualization of FFT.
         """
+
         self.listener.listen()
-        frequencies: list[float] = [FREQ_COUNTER, FREQ_TRANSMIT, FREQ_CONTROL]
-
-        for bit in range(bits):
-            frequencies.append(freq_start + freq_step * bit)
-
-        # Assuming sender already sent `False`, so it will accept `True` next.
-        prev_counter: bool = False
-        connected: bool = False
+        frequencies: list[float] = [*self.freq.all()]
 
         buffer: bytearray = bytearray()
         final_bit_buffer: list[bool] = []
-
-        silence_start: float | None = None
 
         while True:
             frames: list[bytes] = self.listener.pop_available_frames()
@@ -456,45 +396,20 @@ class SoundSender:
                                 frequencies,
                                 INITIAL_TRESHOLD,
                             ),
-                            freq_start,
-                            freq_step,
-                            bits,
+                            self.freq,
                             INITIAL_TRESHOLD,
                         )
 
                     self.listen_for_first_batch(fft, frequencies, frame)
                     continue
 
-                new_counter, no_message, new_bit_buffer = self._update_receiver(
+                new_bit_buffer = self._update_receiver(
                     buffer,
                     final_bit_buffer,
                     frequencies,
-                    freq_start,
-                    freq_step,
-                    bits,
-                    prev_counter,
                     frame,
                 )
-
                 final_bit_buffer = new_bit_buffer
-
-                if not connected and prev_counter != new_counter:
-                    connected = True
-
-                prev_counter = new_counter
-
-                if connected and no_message:
-                    if silence_start is None:
-                        silence_start = time.time()
-                    elif time.time() - silence_start >= 5.0:
-                        print('Disconnected')
-                        connected = False
-                        silence_start = None
-                        prev_counter = False
-                        buffer.clear()
-                        final_bit_buffer.clear()
-                else:
-                    silence_start = None
 
     def dispose(self) -> None:
         """
@@ -538,28 +453,13 @@ def main() -> None:
                 str_to_transfer: str = input('Enter string to transfer: ')
                 sender.send_message(
                     str_to_transfer,
-                    CH3_FREQ_START,
-                    CH3_FREQ_STEP,
-                    CH3_TRANSFER_BITS,
                 )
         elif mode == 'receiver':
-            sender.receive_loop(
-                CH3_FREQ_START,
-                CH3_FREQ_STEP,
-                CH3_TRANSFER_BITS,
-            )
+            sender.receive_loop()
         else:
+            print('not implemented yet')
+            return
             sender = SoundSender(duration=20.0)
-
-            frequencies: list[float] = [
-                FREQ_COUNTER,
-                FREQ_TRANSMIT,
-                FREQ_CONTROL,
-                *[
-                    CH3_FREQ_START + CH3_FREQ_STEP * i
-                    for i in range(CH3_TRANSFER_BITS)
-                ],
-            ]
 
             while True:
                 bitmask: str = input('Enter bitmask to play: ').zfill(6)

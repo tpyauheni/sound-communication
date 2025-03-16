@@ -9,7 +9,7 @@ from typing import Any
 
 from numpy.typing import NDArray
 
-from soundcom.audioconsts import FREQ_COUNTER, FREQ_TRANSMIT, FREQ_CONTROL
+from soundcom.audioconsts import Freq
 
 mp_disabled: bool = False
 
@@ -103,8 +103,13 @@ class Visualizer:
         plt.pause(0.001)
         self.plt_initialized = True
 
-    def process_bits(self, bits_set: list[bool], freq_start: float,
-                     freq_step: float, bits: int, treshold: float) -> None:
+    def process_bits(
+        self,
+        bits_set: list[bool],
+        freq: Freq,
+        treshold: float,
+        width: float = 20.0,
+    ) -> None:
         if mp_disabled:
             return
 
@@ -113,17 +118,12 @@ class Visualizer:
 
         self.freq_marks.clear()
 
-        frequencies: list[float] = [
-            FREQ_COUNTER,
-            FREQ_TRANSMIT,
-            FREQ_CONTROL,
-            *[freq_start + i * freq_step for i in range(bits)],
-        ]
+        frequencies: list[float] = list(freq.all())
 
         for i, bit in enumerate(bits_set):
-            freq = frequencies[i]
+            frequency = frequencies[i]
             self.freq_marks.append(plt.plot(
-                [freq - 100, freq + 100],
+                [frequency - width / 2.0, frequency + width / 2.0],
                 [treshold, treshold],
                 color='#ff8000' if bit else '#0080ff',
             )[0])
