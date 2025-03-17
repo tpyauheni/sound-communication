@@ -15,6 +15,8 @@ from optional.visualize import Visualizer
 from soundcom.audio import SoundBatch
 from soundcom.audioconsts import Freq
 
+import alternative as alt
+
 # Treshold which is used to indicate whether bit is considered ON
 # If set too low, it may assume environmental noise as a sent bit.
 # If set too high, it may assume sent bit as environmental noise.
@@ -427,34 +429,50 @@ def main() -> None:
     and not imported in any other project.
     """
 
-    sender: SoundSender = SoundSender(duration=0.5)
     mode: str
+    fsk_method: str
 
     while True:
-        mode = input(
-            'Select mode [sender / receiver / batch]: ').lower()
+        print(
+            'Select mode [sender / receiver / batch]:', flush=True)
+        mode: str = input().lower()
 
         match mode:
             case 's' | 'sn' | 'snd' | 'send' | 'sender':
                 mode = 'sender'
+                fsk_method = 'sender.original'
                 break
             case 'r' | 're' | 'rec' | 'recv' | 'receiver':
                 mode = 'receiver'
+                fsk_method = 'receiver.original'
                 break
             case 'b' | 'bt' | 'batch':
                 mode = 'batch'
+                fsk_method = 'batch.original'
                 break
             case _:
                 print('Invalid mode')
 
     try:
         if mode == 'sender':
+            if not mode.endswith('originаl'):
+                alt.sender()
+                return
+
+            sender: SoundSender = SoundSender(duration=0.5)
+
             while True:
-                str_to_transfer: str = input('Enter string to transfer: ')
+                print('Enter string to transfer:', flush=True)
+                str_to_transfer: str = input()
                 sender.send_message(
                     str_to_transfer,
                 )
         elif mode == 'receiver':
+            if not mode.endswith('originаl'):
+                alt.receiver()
+                return
+
+            sender: SoundSender = SoundSender(duration=0.5)
             sender.receive_loop()
         else:
             print('not implemented yet')
@@ -492,9 +510,10 @@ def main() -> None:
 
         sender.dispose()
     except KeyboardInterrupt:
-        sender.dispose()
+        # sender.dispose()
+        pass
     except SystemExit as exc:
-        sender.dispose()
+        # sender.dispose()
         raise exc
 
 
