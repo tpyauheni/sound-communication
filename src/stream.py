@@ -22,22 +22,38 @@ class BufferedStream(Stream):
     input_lock: threading.Lock
     output_buffer: list[bytes] = []
     output_lock: threading.Lock
-    turn_write: bool
+    _turn_write: bool
 
     def __init__(self, turn_write: bool) -> None:
         self.input_buffer = bytes()
         self.input_lock = threading.Lock()
         self.output_buffer = []
         self.output_lock = threading.Lock()
-        self.turn_write = turn_write
+        self._turn_write = turn_write
 
     def turn(self) -> None:
         with self.input_lock:
             with self.output_lock:
-                self.turn_write = not self.turn_write
+                self._turn_write = not self._turn_write
+
+    def turn_read(self) -> None:
+        if not self._turn_write:
+            return
+
+        with self.input_lock:
+            with self.output_lock:
+                self._turn_write = False
+
+    def turn_write(self) -> None:
+        if self._turn_write:
+            return
+
+        with self.input_lock:
+            with self.output_lock:
+                self._turn_write = True
 
     def can_read(self) -> bool:
-        return not self.turn_write
+        return not self._turn_write
 
     def read(self, length: int, block: bool = True, precision: float = 0.05) -> bytes:
         with self.input_lock:
@@ -64,7 +80,7 @@ class BufferedStream(Stream):
             return data
 
     def can_write(self) -> bool:
-        return self.turn_write
+        return self._turn_write
 
     def write(self, data: bytes, block: bool = True, precision: float = 0.05) -> None:
         self.output_buffer.append(data)

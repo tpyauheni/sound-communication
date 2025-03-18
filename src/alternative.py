@@ -53,7 +53,7 @@ class AlternativeStream(BufferedStream):
     def _read_loop(self) -> None:
         try:
             while True:
-                if self.turn_write:
+                if self._turn_write:
                     frames: int = self.input_stream.get_read_available()
                     self.input_stream.read(frames, exception_on_overflow=False)
                     time.sleep(0.01)
@@ -64,13 +64,15 @@ class AlternativeStream(BufferedStream):
 
                 if data:
                     with self.input_lock:
+                        # Sleep until another peer stops transmitting its message.
+                        time.sleep(0.15)
                         self.input_buffer += data
         except OSError as exc:
             print(exc)
 
     def _write_loop(self) -> None:
         while True:
-            if not self.turn_write:
+            if not self._turn_write:
                 time.sleep(0.01)
 
             if len(self.output_buffer) == 0:
@@ -101,9 +103,278 @@ class AlternativeStream(BufferedStream):
         self.ctx.terminate()
 
 
-# It is a bitmask so next element must be the next power of two
-SYN: int = 1
-ACK: int = 2
+class ReliableTransceiver:
+    # It is a bitmask so next element must be the next power of two
+    # Synchronize (from TCP)
+    SYN: int = 1
+    # Acknowledged (from TCP)
+    ACK: int = 2
+    # Retry
+    RTR: int = 4
+
+    session_started: bool = False
+    last_received_packet: int = -1
+    last_sent_packet: int = -1
+
+    stream: AlternativeStream
+
+    def __init__(self, stream: AlternativeStream) -> None:
+        self.stream = stream
+
+    def read_equals(self, timeout: float, data: bytes, precision: float = 0.01) -> bool:
+        size: int = len(data)
+        start_time: float = time.time()
+        result: bytes = bytes()
+
+        while True:
+            time_now: float = time.time()
+
+            if time_now >= start_time + timeout:
+                return False
+
+            buffer: bytes = self.stream.read(size, block=False)
+            result += buffer
+
+            if len(result) > size:
+                return False
+
+            if len(result) == size:
+                if result == data:
+                    return True
+
+                print(f'Buffer {result} != buffer {data}')
+                return False
+
+            time.sleep(precision)
+
+    def read(self, size: int, abort_timeout: float = 15.0, precision: float = 0.01) -> bytes:
+        if size <= 0:
+            raise ValueError('Attempted to read data with non-positive size from a stream')
+
+        self.last_received_packet += 1
+
+        start_time: float = time.time()
+        result: bytes = bytes()
+        self.stream.turn_read()
+
+        while True:
+            time_now: float = time.time()
+
+            if time_now - start_time >= abort_timeout:
+                # TODO: Reset everything and try to connect from the very beginning again
+                raise ConnectionAbortedError()
+
+            buffer: bytes = self.stream.read(1, block=False)
+
+            if len(buffer) == 0:
+                time.sleep(precision)
+                continue
+
+            if len(buffer) > 1:
+                print('[Warning] Read more bytes from buffer than expected')
+
+            batch_id: int = struct.unpack('<B', buffer)[0]
+
+            if len(buffer) >= 1:
+                if batch_id > self.last_received_packet:
+                    print(f'[Warning] Received packet with unexpected id: {batch_id}, expected {self.last_received_packet}')
+                    # TODO: Properly ensure that we are fully discarding that packet
+                    time.sleep(0.5)
+                    raise ConnectionAbortedError()
+                    # time.sleep(0.5)
+                    # start_time += 0.5
+                    # self.stream.clear_input_buffer()
+                    # continue
+
+                if batch_id < self.last_received_packet:
+                    # TODO: Properly ensure that we are fully discarding that packet
+                    time.sleep(0.5)
+                    start_time += 0.5
+                    self.stream.clear_input_buffer()
+                    self.stream.turn_write()
+                    self.stream.write(struct.pack('<BB', batch_id, self.ACK))
+                    self.stream.turn_read()
+                    continue
+
+                break
+
+        while size > 0:
+            time_now: float = time.time()
+
+            if time_now - start_time >= abort_timeout:
+                # TODO: Reset everything and try to connect from the very beginning again
+                raise ConnectionAbortedError()
+
+            buffer: bytes = self.stream.read(size, block=False)
+            result += buffer
+            size -= len(buffer)
+
+            if size < 0:
+                print('Returning more bytes that requested!')
+
+            if size <= 0:
+                self.stream.turn_write()
+                self.stream.write(struct.pack('<BB', batch_id, self.ACK))
+                self.stream.turn_read()
+                break
+
+            time.sleep(precision)
+
+        return result
+
+    def write(self, data: bytes, resend_timeout: float = 1.0, abort_retries: int = 5, precision: float = 0.01) -> None:
+        self.last_sent_packet += 1
+        self.last_sent_packet %= 256
+        full_data: bytes = struct.pack('<B', self.last_sent_packet) + data
+        self.stream.turn_write()
+        self.stream.write(full_data)
+
+        size: int = 2
+        last_resend_time: float = time.time()
+        result: bytes = bytes()
+        retries: int = 0
+
+        while True:
+            time_now: float = time.time()
+
+            if time_now - last_resend_time >= resend_timeout:
+                self.stream.turn_write()
+                self.stream.write(full_data)
+                retries += 1
+
+                if retries >= abort_retries:
+                    # TODO: Reset everything and try to connect from the very beginning again
+                    raise ConnectionAbortedError()
+
+                last_resend_time = time.time()
+
+            self.stream.turn_read()
+            buffer: bytes = self.stream.read(size, block=False)
+            result += buffer
+            size -= len(buffer)
+
+            if size <= 0:
+                if size < 0:
+                    print('Returning more bytes that requested!')
+                    break
+
+                response: tuple[int, int] = struct.unpack('<BB', result)
+                failure: bool = False
+
+                if response[1] != self.ACK:
+                    print('[Warning] Received non-ACK response code:', response)
+                    failure = True
+
+                if response[0] != self.last_sent_packet:
+                    print(f'[Warning] Received ACK for different packet ({response[0]}) but sent {self.last_sent_packet}')
+                    failure = True
+
+                if failure:
+                    self.stream.turn_write()
+                    self.stream.write(full_data)
+                    retries += 1
+
+                    if retries >= abort_retries:
+                        # TODO: Reset everything and try to connect from the very beginning again
+                        raise ConnectionAbortedError()
+
+                    last_resend_time = time.time()
+                else:
+                    return
+
+            time.sleep(precision)
+
+    def connect_init_sender(self, reconnect_interval: float = 1.5) -> None:
+        # self.stream.clear_input_buff= er()
+        #
+        # if is_sender:
+        #     self.stream.turn_write()
+        #     self.stream.write(struct.pack('<B', self.SYN))
+        while True:
+            self.stream.clear_input_buffer()
+            self.stream.clear_output_buffer()
+            self.last_sent_packet = -1
+            self.last_received_packet = -1
+            self.stream.turn_write()
+
+            retries: int = 3
+
+            while retries >= 0:
+                self.stream.write(struct.pack('<B', self.SYN))
+                print('Sent `SYN`')
+                self.stream.turn_read()
+
+                try:
+                    data: bytes = self.read(1, abort_timeout=1.5)
+                except ConnectionAbortedError:
+                    print('Connection aborted')
+                    retries = -1
+                    break
+
+                # print(data)
+                response: int = struct.unpack('<B', data)[0]
+
+                if response != self.SYN | self.ACK:
+                    print('Another peer responded with something different than `SYN|ACK`:', response)
+                    time.sleep(reconnect_interval)
+                    retries -= 1
+                    continue
+
+                print('Got `SYN|ACK`')
+                break
+
+            if retries >= 0:
+                break
+
+    def connect_init_receiver(self, reconnect_interval: float = 1.0) -> None:
+        while True:
+            self.stream.clear_input_buffer()
+            self.stream.clear_output_buffer()
+            self.last_sent_packet = -1
+            self.last_received_packet = -1
+            self.stream.turn_read()
+
+            buffer: bytes = self.stream.read(1)
+
+            if struct.unpack('<B', buffer)[0] != self.SYN:
+                print('[Warning] Got value different from `SYN`')
+                continue
+
+            print('Received `SYN`, sending `SYN|ACK`...')
+
+            retries: int = 3
+            self.last_sent_packet += 1
+            syn_ack: bytes = struct.pack('<BB', self.last_sent_packet, self.SYN | self.ACK)
+
+            while retries >= 0:
+                self.stream.turn_write()
+                self.stream.write(syn_ack)
+                print('Sent `SYN|ACK`')
+                self.stream.turn_read()
+
+                if self.read_equals(reconnect_interval, struct.pack('<BB', self.last_sent_packet, self.ACK)):
+                    print('Received `ACK`')
+                    break
+
+                retries -= 1
+
+            if retries >= 0:
+                break
+
+    def connect(self, is_sender: bool) -> None:
+        while True:
+            print(f'Connecting as {['receiver', 'sender'][is_sender]}...')
+            (self.connect_init_sender if is_sender else self.connect_init_receiver)()
+            print('Initial (unencrypted) connection established')
+
+            try:
+                self.read(1)
+            except ConnectionAbortedError:
+                print('Disconnected')
+                continue
+
+            time.sleep(15.0)
+            print('Disconnected: idle time exceeded')
 
 
 def sender() -> None:
@@ -111,6 +382,11 @@ def sender() -> None:
         ggwave.disableLog()
 
     stream: AlternativeStream = AlternativeStream(True)
+    ggwave.txToggleProtocol(5, 1)
+    ggwave.rxToggleProtocol(1, 1)
+    transceiver: ReliableTransceiver = ReliableTransceiver(stream)
+    transceiver.connect(True)
+    return
 
     while True:
         stream.clear_input_buffer()
@@ -186,6 +462,11 @@ def receiver() -> None:
         ggwave.disableLog()
 
     stream: AlternativeStream = AlternativeStream(False)
+    ggwave.rxToggleProtocol(5, 1)
+    ggwave.txToggleProtocol(1, 1)
+    transceiver: ReliableTransceiver = ReliableTransceiver(stream)
+    transceiver.connect(False)
+    return
 
     while True:
         stream.clear_input_buffer()
