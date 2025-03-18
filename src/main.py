@@ -413,6 +413,29 @@ class SoundSender:
                 )
                 final_bit_buffer = new_bit_buffer
 
+    def visualize_loop(
+        self,
+    ) -> None:
+        """
+        Visualizes FFT from sound input in an infinite loop if required libraries are installed.
+        """
+
+        self.listener.listen()
+
+        while True:
+            frames: list[bytes] = self.listener.pop_available_frames()
+
+            if len(frames) == 0:
+                continue
+
+            frame = frames.pop()
+            frames.clear()
+            fft = fourie_transform(frame)
+
+            if len(frames) == 0:
+                self.visualizer.process(fft)
+                time.sleep(0.01)
+
     def dispose(self) -> None:
         """
         Cleans up used resources.
@@ -434,7 +457,7 @@ def main() -> None:
 
     while True:
         print(
-            'Select mode [sender / receiver / batch]:', flush=True)
+            'Select mode [sender / receiver / monitor]:', flush=True)
         mode: str = input().lower()
 
         match mode:
@@ -446,9 +469,9 @@ def main() -> None:
                 mode = 'receiver'
                 fsk_method = 'receiver.original'
                 break
-            case 'b' | 'bt' | 'batch':
-                mode = 'batch'
-                fsk_method = 'batch.original'
+            case 'm' | 'mn' | 'mon' | 'mntr' | 'monitor':
+                mode = 'monitor'
+                fsk_method = 'monitor.original'
                 break
             case _:
                 print('Invalid mode')
@@ -474,6 +497,9 @@ def main() -> None:
 
             sender: SoundSender = SoundSender(duration=0.5)
             sender.receive_loop()
+        elif mode == 'monitor':
+            sender: SoundSender = SoundSender()
+            sender.visualize_loop()
         else:
             print('not implemented yet')
             return
