@@ -6,6 +6,7 @@ import threading
 import time
 import struct
 import sys
+import ctypes
 
 from error_corrector import ErrorCorrector
 from stream import BufferedStream
@@ -37,9 +38,32 @@ class AlternativeStream(BufferedStream):
     writer: threading.Thread
     output_chunk_bytes: int
 
+    def _libasound_error_handler(self, filename: bytes, line: bytes, function: bytes, err: int, fmt: bytes, *args) -> None:
+        if '--disable-log' in sys.argv:
+            return
+
+        print('[Error] libasound:', f'{filename.decode()}:{line}:', f'{function.decode()}:', err, fmt.decode().replace('%s', '?'))
+
     def __init__(self, turn_write: bool) -> None:
         self.transformer = ggwave.init()
+
+        ERROR_HANDLER_FUNC = ctypes.CFUNCTYPE(
+            None,
+            ctypes.c_char_p,
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_int,
+            ctypes.c_char_p,
+        )
+
+        c_error_handler = ERROR_HANDLER_FUNC(self._libasound_error_handler)
+
+        asound = ctypes.cdll.LoadLibrary('libasound.so')
+        # Set error handler
+        asound.snd_lib_error_set_handler(c_error_handler)
         self.ctx = pyaudio.PyAudio()
+        asound.snd_lib_error_set_handler(None)
+
         self.input_stream = self.ctx.open(format=pyaudio.paFloat32, channels=1, rate=48_000, input=True, frames_per_buffer=1024)
         self.output_chunk_bytes = 1024 * 4
         self.output_stream = self.ctx.open(format=pyaudio.paFloat32, channels=1, rate=48_000, output=True, frames_per_buffer=self.output_chunk_bytes // 4)
@@ -134,6 +158,7 @@ class ReliableTransceiver:
     session_started: bool = False
     last_received_packet: int = -1
     last_sent_packet: int = -1
+    connection_establishment_time: float | None = None
 
     stream: AlternativeStream
 
@@ -205,7 +230,7 @@ class ReliableTransceiver:
                 if batch_id > self.last_received_packet:
                     print(f'[Warning] Received packet with unexpected id: {batch_id}, expected {self.last_received_packet}')
                     # TODO: Properly ensure that we are fully discarding that packet
-                    time.sleep(0.5)
+                    time.sleep(1.0)
                     raise ConnectionAbortedError()
                     # time.sleep(0.5)
                     # start_time += 0.5
@@ -214,8 +239,8 @@ class ReliableTransceiver:
 
                 if batch_id < self.last_received_packet:
                     # TODO: Properly ensure that we are fully discarding that packet
-                    time.sleep(0.5)
-                    start_time += 0.5
+                    time.sleep(1.0)
+                    start_time += 1.0
                     self.stream.clear_input_buffer()
                     # We are sending ACK even if `send_ack` is False as it only determines
                     # such behavior if `batch_id` == `self.last_received_packet`.
@@ -320,11 +345,6 @@ class ReliableTransceiver:
             time.sleep(precision)
 
     def connect_init_sender(self, reconnect_interval: float = 1.5) -> None:
-        # self.stream.clear_input_buff= er()
-        #
-        # if is_sender:
-        #     self.stream.turn_write()
-        #     self.stream.write(struct.pack('<B', self.SYN))
         while True:
             self.stream.clear_input_buffer()
             self.stream.clear_output_buffer()
@@ -499,59 +519,6 @@ def sender() -> None:
     stream: AlternativeStream = AlternativeStream(True)
     transceiver: ReliableTransceiver = ReliableTransceiver(stream)
     transceiver.connect(True)
-    return
-
-    print('Initialization sequence complete, exchanging keys...')
-    key_exchanger: KeyExchanger = KeyExchanger(None, None)
-    their_pubkey: bytes = stream.read(32)
-    print('Their public key: ', their_pubkey)
-    session_key: SymmetricKey = key_exchanger.get_symkey(their_pubkey, dispose=False)
-    print('My public key: ', key_exchanger.pubkey())
-    print('My secret key: ', key_exchanger.seckey())
-    print('Session key: ', session_key.key_ref()[0])
-    stream.turn()
-    key: bytes = key_exchanger.exchange_pubkey()
-    print('Sender\'s key: ', key)
-    stream.write(key)
-    print('Sent key', flush=True)
-
-    stream.turn()
-    # Encrypted Client Hello
-    print('Reading ECH')
-    ech: bytes = stream.read(8 + 5)
-    decrypted: bytes = session_key.decrypt(ech)
-    assert decrypted == b'Hello'
-
-    stream.turn()
-    ciphertext: bytes = session_key.encrypt(b'Hi')
-    print('Sending cipher: ', ciphertext)
-    stream.write(ciphertext)
-
-    print('did that')
-    stream.turn()
-    print('almost there', flush=True)
-    plaintext: bytes = session_key.decrypt(stream.read(8 + 1))
-    print('Should be ACK:', plaintext)
-    assert struct.unpack('<B', plaintext)[0] == ACK
-
-    print('Connection established')
-
-    # TODO
-
-    session_key.dispose()
-    stream.dispose()
-    print('Connection finished')
-
-    # print('Enter string to transfer:', flush=True)
-    # str_to_transfer: str = input()
-
-    # waveform = ggwave.encode(str_to_transfer, protocolId = 5, volume = 100)
-
-    # stream.write(waveform, len(waveform)//4)
-    # stream.stop_stream()
-    # stream.close()
-    # p.terminate()
-    # print('Done', flush=True)
 
 
 def receiver() -> None:
@@ -561,71 +528,4 @@ def receiver() -> None:
     stream: AlternativeStream = AlternativeStream(False)
     transceiver: ReliableTransceiver = ReliableTransceiver(stream)
     transceiver.connect(False)
-    return
-
-    stream.turn()
-    print('Initialization sequence complete, exchanging keys...')
-    key_exchanger: KeyExchanger = KeyExchanger(None, None)
-    key: bytes = key_exchanger.exchange_pubkey()
-    print('Sending key: ', key)
-    stream.write(key)
-    print('Sent that key')
-    stream.turn()
-    print('After turn')
-    their_pubkey: bytes = stream.read(32)
-    print('My public key: ', key_exchanger.pubkey())
-    print('Their public key: ', their_pubkey)
-    print('My secret key: ', key_exchanger.seckey())
-    session_key: SymmetricKey = key_exchanger.get_symkey(their_pubkey)
-    print('Session key: ', session_key.key_ref()[0])
-
-    stream.turn()
-    ciphertext: bytes = session_key.encrypt(b'Hello')
-    print('Sending cipher: ', ciphertext)
-    stream.write(ciphertext)
-
-    stream.turn()
-    # Encrypted Client Hello
-    ech: bytes = stream.read(8 + 2)
-    decrypted: bytes = session_key.decrypt(ech)
-    assert decrypted == b'Hi'
-
-    stream.turn()
-    ciphertext = session_key.encrypt(struct.pack('<B', ACK))
-    print('Sending cipher: ', ciphertext)
-    stream.write(ciphertext)
-
-    print('Connection established')
-
-    # TODO
-
-    session_key.dispose()
-    stream.dispose()
-    print('Connection finished')
-
-    # p = pyaudio.PyAudio()
-
-    # stream = p.open(format=pyaudio.paFloat32, channels=1, rate=48000, input=True, frames_per_buffer=1024)
-
-    # print('Listening ... Press Ctrl+C to stop', flush=True)
-    # instance = ggwave.init()
-    #
-    # try:
-    #     while True:
-    #         data = stream.read(1024, exception_on_overflow=False)
-    #         res = ggwave.decode(instance, data)
-    #         if (not res is None):
-    #             try:
-    #                 print('Received text: ' + res.decode("utf-8"), flush=True)
-    #             except:
-    #                 pass
-    # except KeyboardInterrupt:
-    #     pass
-    #
-    # ggwave.free(instance)
-    #
-    # stream.stop_stream()
-    # stream.close()
-    #
-    # p.terminate()
 
