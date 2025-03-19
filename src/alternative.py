@@ -1,4 +1,4 @@
-from typing import Any, final
+from typing import Any
 
 import ggwave
 import pyaudio
@@ -7,8 +7,7 @@ import time
 import struct
 import sys
 
-import base64
-
+from error_corrector import ErrorCorrector
 from stream import BufferedStream
 from cryptoec import KeyExchanger, SymmetricKey
 
@@ -52,6 +51,12 @@ class AlternativeStream(BufferedStream):
         self.reader.start()
         self.writer.start()
 
+    def _decode_data(self, data: bytes) -> bytes:
+        return ErrorCorrector(data).decode()
+
+    def _encode_data(self, data: bytes) -> bytes:
+        return ErrorCorrector(data).encode()
+
     def _read_loop(self) -> None:
         try:
             while True:
@@ -68,7 +73,7 @@ class AlternativeStream(BufferedStream):
                     with self.input_lock:
                         # Sleep until another peer stops transmitting its message.
                         time.sleep(0.15)
-                        self.input_buffer += data
+                        self.input_buffer += self._decode_data(data)
         except OSError as exc:
             print(exc)
 
@@ -82,7 +87,7 @@ class AlternativeStream(BufferedStream):
         if self.output_lock.acquire(blocking=False):
             try:
                 data: bytes = self.output_buffer.pop()
-                self._write(data)
+                self._write(self._encode_data(data))
             finally:
                 self.output_lock.release()
 
