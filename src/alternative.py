@@ -1,12 +1,13 @@
 from typing import Any
 
-import ggwave
+import pyggwave
 import pyaudio
 import threading
 import time
 import struct
 import sys
 import ctypes
+import base64
 
 from error_corrector import ErrorCorrector
 from stream import BufferedStream
@@ -28,7 +29,7 @@ class GgwObject:
 
 
 class AlternativeStream(BufferedStream):
-    transformer: Any
+    transformer: pyggwave.GGWave
     ctx: pyaudio.PyAudio
     input_stream: pyaudio.Stream
     output_stream: pyaudio.Stream
@@ -45,7 +46,7 @@ class AlternativeStream(BufferedStream):
         print('[Error] libasound:', f'{filename.decode()}:{line}:', f'{function.decode()}:', err, fmt.decode().replace('%s', '?'))
 
     def __init__(self, turn_write: bool) -> None:
-        self.transformer = ggwave.init()
+        self.transformer = pyggwave.GGWave()
 
         ERROR_HANDLER_FUNC = ctypes.CFUNCTYPE(
             None,
@@ -91,7 +92,7 @@ class AlternativeStream(BufferedStream):
                     continue
 
                 frame: bytes = self.input_stream.read(1024, exception_on_overflow=False)
-                data: bytes | None = ggwave.decode(self.transformer, frame)
+                data: bytes | None = self.transformer.decode(frame)
 
                 if data:
                     with self.input_lock:
@@ -127,7 +128,7 @@ class AlternativeStream(BufferedStream):
             self.output_stream.write(silence)
 
     def _write(self, data: bytes) -> None:
-        frames: bytes = ggwave.encode(GgwObject(data), protocolId=5, volume=100)
+        frames: bytes = self.transformer.encode(data, protocol_id=5, volume=100)
         self.output_stream.write(frames, len(frames) // 4)
 
     def clear_input_buffer(self) -> None:
@@ -155,10 +156,10 @@ class ReliableTransceiver:
     # Retry (unused)
     RTR: int = 4
 
-    session_started: bool = False
     last_received_packet: int = -1
     last_sent_packet: int = -1
-    connection_establishment_time: float | None = None
+    prev_packet_time: float | None = None
+    first_packet_time: float | None = None
 
     stream: AlternativeStream
 
@@ -279,7 +280,6 @@ class ReliableTransceiver:
         if send_ack:
             return result
 
-        print(ack_packet, result, type(ack_packet), type(result))
         return ack_packet, result
 
     def write(self, data: bytes, resend_timeout: float = 1.0, abort_retries: int = 5, precision: float = 0.01) -> None:
@@ -350,12 +350,14 @@ class ReliableTransceiver:
             self.stream.clear_output_buffer()
             self.last_sent_packet = -1
             self.last_received_packet = -1
+            self.prev_packet_time = None
+            self.first_packet_time = None
             self.stream.turn_write()
 
             retries: int = 3
 
             while retries >= 0:
-                print('Iter with retries', retries)
+                self.prev_packet_time = time.time()
                 self.stream.turn_write()
                 self.stream.write(struct.pack('<B', self.SYN))
                 print('Sent `SYN`')
@@ -381,6 +383,7 @@ class ReliableTransceiver:
                     continue
 
                 print('Got `SYN|ACK`')
+                self.first_packet_time = self.prev_packet_time
                 self.stream.turn_write()
                 self.stream.write(ack)
                 print('Sent `ACK`')
@@ -395,6 +398,8 @@ class ReliableTransceiver:
             self.stream.clear_output_buffer()
             self.last_sent_packet = -1
             self.last_received_packet = -1
+            self.prev_packet_time = None
+            self.first_packet_time = None
             self.stream.turn_read()
 
             buffer: bytes = self.stream.read(1)
@@ -403,6 +408,7 @@ class ReliableTransceiver:
                 print('[Warning] Got value different from `SYN`')
                 continue
 
+            self.prev_packet_time = time.time()
             print('Received `SYN`, sending `SYN|ACK`...')
 
             retries: int = 3
@@ -416,6 +422,7 @@ class ReliableTransceiver:
                 self.stream.turn_read()
 
                 if self.read_equals(reconnect_interval, struct.pack('<BB', self.last_sent_packet, self.ACK)):
+                    self.first_packet_time = self.prev_packet_time
                     print('Received `ACK`')
                     break
 
@@ -427,15 +434,11 @@ class ReliableTransceiver:
     def key_exchange_sender(self) -> None:
         key_exchanger: KeyExchanger = KeyExchanger(None, None)
         key: bytes = key_exchanger.exchange_pubkey()
-        print('Sending key: ', key)
         self.write(key)
-        print('Sent that key')
         their_pubkey: bytes = self.read(32)
-        print('My public key: ', key_exchanger.pubkey())
-        print('Their public key: ', their_pubkey)
-        print('My secret key: ', key_exchanger.seckey())
+        print('My public key: "', base64.b85encode(key_exchanger.pubkey()).decode(), '"', sep='')
+        print('Their public key: "', base64.b85encode(their_pubkey).decode(), '"', sep='')
         session_key: SymmetricKey = key_exchanger.get_symkey(their_pubkey)
-        print('Session key: ', session_key.key_ref()[0])
 
         ciphertext: bytes = session_key.encrypt(b'Hello')
         print('Sending cipher: ', ciphertext)
@@ -455,21 +458,16 @@ class ReliableTransceiver:
         # TODO
 
         session_key.dispose()
-        self.stream.dispose()
         print('Connection finished')
 
     def key_exchange_receiver(self) -> None:
         key_exchanger: KeyExchanger = KeyExchanger(None, None)
         their_pubkey: bytes = self.read(32)
-        print('Their public key: ', their_pubkey)
+        print('Their public key: "', base64.b85encode(their_pubkey).decode(), '"', sep='')
         session_key: SymmetricKey = key_exchanger.get_symkey(their_pubkey, dispose=False)
-        print('My public key: ', key_exchanger.pubkey())
-        print('My secret key: ', key_exchanger.seckey())
-        print('Session key: ', session_key.key_ref()[0])
+        print('My public key: "', base64.b85encode(key_exchanger.pubkey()).decode(), '"', sep='')
         key: bytes = key_exchanger.exchange_pubkey()
-        print('Sender\'s key: ', key)
         self.write(key)
-        print('Sent key', flush=True)
 
         # Encrypted Client Hello
         print('Reading ECH')
@@ -492,7 +490,6 @@ class ReliableTransceiver:
         # TODO
 
         session_key.dispose()
-        self.stream.dispose()
         print('Connection finished')
 
     def connect(self, is_sender: bool) -> None:
@@ -514,18 +511,28 @@ class ReliableTransceiver:
 
 def sender() -> None:
     if '--disable-log' in sys.argv:
-        ggwave.disableLog()
+        pyggwave.GGWave.disable_log()
 
     stream: AlternativeStream = AlternativeStream(True)
     transceiver: ReliableTransceiver = ReliableTransceiver(stream)
-    transceiver.connect(True)
+
+    while True:
+        try:
+            transceiver.connect(True)
+        except ConnectionAbortedError:
+            print('Connection aborted, trying to reconnect...')
 
 
 def receiver() -> None:
     if '--disable-log' in sys.argv:
-        ggwave.disableLog()
+        pyggwave.GGWave.disable_log()
 
     stream: AlternativeStream = AlternativeStream(False)
     transceiver: ReliableTransceiver = ReliableTransceiver(stream)
-    transceiver.connect(False)
+
+    while True:
+        try:
+            transceiver.connect(False)
+        except ConnectionAbortedError:
+            print('Connection aborted, trying to reconnect...')
 

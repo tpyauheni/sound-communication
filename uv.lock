@@ -60,20 +60,6 @@ wheels = [
 ]
 
 [[package]]
-name = "ggwave-wheels"
-version = "0.4.2.5"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/6a/12/a5f665a92db2597fade2b5bf5741ac88671f489e93815ecc9df772c92ce2/ggwave_wheels-0.4.2.5.tar.gz", hash = "sha256:af2355ed9281346870222dd0ae60a50c234f9a7478db917a6489eae61e713aac", size = 97436 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e1/ce/f5e274c2576d7bf6955cad901bf31887e11dcc46c6eb71dc89be12732eb2/ggwave_wheels-0.4.2.5-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:2f2c80765ac5700a7afee4fe300802a886e155d8997e9d24501e5e1d058de420", size = 69603 },
-    { url = "https://files.pythonhosted.org/packages/a5/92/30e1cd0d6b4291e19197c483b73eb536c1579bc4d3189aad04e1f6ddd295/ggwave_wheels-0.4.2.5-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:81b97952ebfd9b0d5015c9b37b96b4eed76eca2bbb150c30f2b2ec1f83498b59", size = 63024 },
-    { url = "https://files.pythonhosted.org/packages/a1/0f/f670ff1e7c7d18a41113bee2dd53e3d28603360178e5e97dcb4329e5cf95/ggwave_wheels-0.4.2.5-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e37a1cd122433775a9db5bac4fb42039a86b28c1f840ff270e98590b5d048509", size = 400999 },
-    { url = "https://files.pythonhosted.org/packages/f0/a1/f1e96d0ff62438d93fc5c3aaf310b1c42f4c161fa3784472728fd3c6fb25/ggwave_wheels-0.4.2.5-cp313-cp313-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:5f9d90a33e45af997cefcc8b6b7e5226e4c4f88a116dd2154687cadcd0954e6c", size = 394598 },
-    { url = "https://files.pythonhosted.org/packages/e7/58/aebef319c42fbecb96e63adbbfca9037e0b4d942658f67e1cb479865c0bf/ggwave_wheels-0.4.2.5-cp313-cp313-win32.whl", hash = "sha256:da7ac56343bef3cec30f387f7c304c076980a430daaa71bb8bab0c934c5b6dc5", size = 48092 },
-    { url = "https://files.pythonhosted.org/packages/e3/43/69bf949d2cff46b30cf3158ed2c867aa9d202b82194860cf4c77617a599e/ggwave_wheels-0.4.2.5-cp313-cp313-win_amd64.whl", hash = "sha256:e792f8c86a8ff325362678633366cce1a6b9d9709ca706fda00946c75c6f4211", size = 56907 },
-]
-
-[[package]]
 name = "kiwisolver"
 version = "1.4.8"
 source = { registry = "https://pypi.org/simple" }
@@ -233,6 +219,12 @@ wheels = [
 ]
 
 [[package]]
+name = "pyggwave"
+version = "0.4.2.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/61/0b/7c1ff4eb3ff309247357b161b3f46dbd3c140bd1d34c9ea16b9ef8e5eb60/pyggwave-0.4.2.6.tar.gz", hash = "sha256:1139ff2118920a95a8834642ab55ba84b8dd1e76663994f66e45a7900adcc498", size = 123464 }
+
+[[package]]
 name = "pymonocypher"
 version = "4.0.2.5"
 source = { registry = "https://pypi.org/simple" }
@@ -296,22 +288,22 @@ name = "soundcommunication"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "ggwave-wheels" },
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "pyaudio" },
     { name = "pyfftw" },
+    { name = "pyggwave" },
     { name = "pymonocypher" },
     { name = "reedsolo" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "ggwave-wheels", specifier = ">=0.4.2.5" },
     { name = "matplotlib", specifier = ">=3.10.1" },
     { name = "numpy", specifier = ">=2.2.4" },
     { name = "pyaudio", specifier = ">=0.2.14" },
     { name = "pyfftw", specifier = ">=0.15.0" },
+    { name = "pyggwave", specifier = ">=0.4.2.6" },
     { name = "pymonocypher", specifier = ">=4.0.2.5" },
     { name = "reedsolo", specifier = ">=1.7.0" },
 ]
