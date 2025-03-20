@@ -1,6 +1,6 @@
 from typing import Any
 
-import pyggwave
+from pyggwave import GGWave, Parameters, OperatingMode, Protocol
 import pyaudio
 import threading
 import time
@@ -14,22 +14,8 @@ from stream import BufferedStream
 from cryptoec import KeyExchanger, SymmetricKey
 
 
-class GgwObject:
-    """
-    That class is a workaround.
-    """
-
-    data: bytes
-
-    def __init__(self, data: bytes) -> None:
-        self.data = data
-
-    def encode(self) -> bytes:
-        return self.data
-
-
 class AlternativeStream(BufferedStream):
-    transformer: pyggwave.GGWave
+    transformer: GGWave
     ctx: pyaudio.PyAudio
     input_stream: pyaudio.Stream
     output_stream: pyaudio.Stream
@@ -46,7 +32,22 @@ class AlternativeStream(BufferedStream):
         print('[Error] libasound:', f'{filename.decode()}:{line}:', f'{function.decode()}:', err, fmt.decode().replace('%s', '?'))
 
     def __init__(self, turn_write: bool) -> None:
-        self.transformer = pyggwave.GGWave()
+        # for i in range(9):
+        #     GGWave.rx_toggle_protocol(i, False)
+        #     GGWave.tx_toggle_protocol(i, False)
+
+        # GGWave.rx_toggle_protocol(Protocol.MT_FAST, True)
+        # GGWave.tx_toggle_protocol(Protocol.MT_FAST, True)
+        # if turn_write:
+        #     GGWave.tx_protocol_set_freq_start(5, 15_000)
+        # else:
+        #     GGWave.rx_protocol_set_freq_start(5, 15_000)
+
+        self.transformer = GGWave(
+            Parameters(
+                operating_mode=OperatingMode.RX_AND_TX.value,
+            ),
+        )
 
         ERROR_HANDLER_FUNC = ctypes.CFUNCTYPE(
             None,
@@ -128,7 +129,7 @@ class AlternativeStream(BufferedStream):
             self.output_stream.write(silence)
 
     def _write(self, data: bytes) -> None:
-        frames: bytes = self.transformer.encode(data, protocol_id=5, volume=100)
+        frames: bytes = self.transformer.encode(data, protocol=Protocol.ULTRASOUND_FASTEST, volume=100)
         self.output_stream.write(frames, len(frames) // 4)
 
     def clear_input_buffer(self) -> None:
@@ -455,6 +456,8 @@ class ReliableTransceiver:
 
         print('Connection established')
 
+        msg: bytes = self.read(21)
+        print(session_key.decrypt(msg))
         # TODO
 
         session_key.dispose()
@@ -487,6 +490,7 @@ class ReliableTransceiver:
 
         print('Connection established')
 
+        self.write(session_key.encrypt(b'Hello, World!'))
         # TODO
 
         session_key.dispose()
@@ -511,7 +515,7 @@ class ReliableTransceiver:
 
 def sender() -> None:
     if '--disable-log' in sys.argv:
-        pyggwave.GGWave.disable_log()
+        GGWave.disable_log()
 
     stream: AlternativeStream = AlternativeStream(True)
     transceiver: ReliableTransceiver = ReliableTransceiver(stream)
@@ -525,7 +529,7 @@ def sender() -> None:
 
 def receiver() -> None:
     if '--disable-log' in sys.argv:
-        pyggwave.GGWave.disable_log()
+        GGWave.disable_log()
 
     stream: AlternativeStream = AlternativeStream(False)
     transceiver: ReliableTransceiver = ReliableTransceiver(stream)

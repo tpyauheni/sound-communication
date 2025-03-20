@@ -220,9 +220,9 @@ wheels = [
 
 [[package]]
 name = "pyggwave"
-version = "0.4.2.6"
+version = "0.4.2.7"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/61/0b/7c1ff4eb3ff309247357b161b3f46dbd3c140bd1d34c9ea16b9ef8e5eb60/pyggwave-0.4.2.6.tar.gz", hash = "sha256:1139ff2118920a95a8834642ab55ba84b8dd1e76663994f66e45a7900adcc498", size = 123464 }
+sdist = { url = "https://files.pythonhosted.org/packages/a1/38/092271226c549a8db6580f235357bda0306bbb481edb6c79da548009bb59/pyggwave-0.4.2.7.tar.gz", hash = "sha256:35e8689720386e39c9a737453374c7b376cab0302f1cd7028727799394e7736f", size = 157682 }
 
 [[package]]
 name = "pymonocypher"
@@ -303,7 +303,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.2.4" },
     { name = "pyaudio", specifier = ">=0.2.14" },
     { name = "pyfftw", specifier = ">=0.15.0" },
-    { name = "pyggwave", specifier = ">=0.4.2.6" },
+    { name = "pyggwave", specifier = "~=0.4.2.7" },
     { name = "pymonocypher", specifier = ">=4.0.2.5" },
     { name = "reedsolo", specifier = ">=1.7.0" },
 ]

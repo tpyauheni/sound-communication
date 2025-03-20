@@ -9,7 +9,7 @@ dependencies = [
     "numpy>=2.2.4",
     "pyaudio>=0.2.14",
     "pyfftw>=0.15.0",
-    "pyggwave>=0.4.2.6",
+    "pyggwave~=0.4.2.7",
     "pymonocypher>=4.0.2.5",
     "reedsolo>=1.7.0",
 ]
