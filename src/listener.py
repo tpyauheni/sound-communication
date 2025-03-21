@@ -12,7 +12,9 @@ from numpy.typing import NDArray
 from pyaudio import PyAudio, Stream, paInt16
 
 import numpy as np
-import pyfftw  # type: ignore[import-untyped]
+import pyfftw
+
+from log import LOGGER  # type: ignore[import-untyped]
 
 
 class SoundListenerSync:
@@ -114,7 +116,7 @@ class SoundListener:
                 try:
                     self.sync_listener.process()
                 except OSError as exc:
-                    print(exc)
+                    LOGGER.error3(exc)
 
             sleep(0.001)
 

@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>800</width>
+    <height>600</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>MainWindow</string>
+  </property>
+  <widget class="QWidget" name="centralwidget"/>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>800</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menuAccount">
+    <property name="title">
+     <string>Account (in progress)</string>
+    </property>
+    <addaction name="actionAdd_new_account"/>
+    <addaction name="actionSwitch_between_accounts"/>
+    <addaction name="actionManage_accounts"/>
+    <addaction name="actionLog_out"/>
+   </widget>
+   <widget class="QMenu" name="menuSend">
+    <property name="title">
+     <string>Send</string>
+    </property>
+    <addaction name="actionFile"/>
+   </widget>
+   <widget class="QMenu" name="menuOptions">
+    <property name="title">
+     <string>Options</string>
+    </property>
+    <widget class="QMenu" name="menuProtocol">
+     <property name="title">
+      <string>Frequency set</string>
+     </property>
+     <addaction name="actionAudible_Normal"/>
+     <addaction name="actionAudible_Fast"/>
+     <addaction name="actionLow_frequency"/>
+     <addaction name="actionMonotone_experimental"/>
+     <addaction name="actionCustom_in_progress"/>
+    </widget>
+    <widget class="QMenu" name="menuTransmission_speed">
+     <property name="title">
+      <string>Transmission speed</string>
+     </property>
+     <addaction name="actionNormal_reliable"/>
+     <addaction name="actionFast_less_reliable"/>
+     <addaction name="actionFastest_least_reliable"/>
+    </widget>
+    <addaction name="menuProtocol"/>
+    <addaction name="menuTransmission_speed"/>
+   </widget>
+   <widget class="QMenu" name="menuAbout">
+    <property name="title">
+     <string>About</string>
+    </property>
+    <addaction name="actionInfo"/>
+    <addaction name="actionQuit"/>
+   </widget>
+   <addaction name="menuAccount"/>
+   <addaction name="menuSend"/>
+   <addaction name="menuOptions"/>
+   <addaction name="menuAbout"/>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+  <action name="actionInfo">
+   <property name="text">
+    <string>Info</string>
+   </property>
+  </action>
+  <action name="actionQuit">
+   <property name="text">
+    <string>Quit</string>
+   </property>
+  </action>
+  <action name="actionAdd_new_account">
+   <property name="text">
+    <string>Add new account</string>
+   </property>
+  </action>
+  <action name="actionSwitch_between_accounts">
+   <property name="text">
+    <string>Switch between accounts</string>
+   </property>
+  </action>
+  <action name="actionManage_accounts">
+   <property name="text">
+    <string>Manage accounts</string>
+   </property>
+  </action>
+  <action name="actionLog_out">
+   <property name="text">
+    <string>Log out</string>
+   </property>
+  </action>
+  <action name="actionFile">
+   <property name="text">
+    <string>File</string>
+   </property>
+  </action>
+  <action name="actionAudible_Normal">
+   <property name="text">
+    <string>Audible</string>
+   </property>
+  </action>
+  <action name="actionAudible_Fast">
+   <property name="text">
+    <string>Ultrasound</string>
+   </property>
+  </action>
+  <action name="actionLow_frequency">
+   <property name="text">
+    <string>Low frequency</string>
+   </property>
+  </action>
+  <action name="actionMonotone_experimental">
+   <property name="text">
+    <string>Monotone (experimental)</string>
+   </property>
+  </action>
+  <action name="actionCustom_in_progress">
+   <property name="text">
+    <string>Custom (in progress)</string>
+   </property>
+  </action>
+  <action name="actionNormal_reliable">
+   <property name="text">
+    <string>Normal / reliable</string>
+   </property>
+  </action>
+  <action name="actionFast_less_reliable">
+   <property name="text">
+    <string>Fast / less reliable</string>
+   </property>
+  </action>
+  <action name="actionFastest_least_reliable">
+   <property name="text">
+    <string>Fastest / least reliable</string>
+   </property>
+  </action>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

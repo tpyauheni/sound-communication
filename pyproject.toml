@@ -6,10 +6,12 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "matplotlib>=3.10.1",
+    "npyscreen>=4.10.5",
     "numpy>=2.2.4",
     "pyaudio>=0.2.14",
     "pyfftw>=0.15.0",
     "pyggwave~=0.4.2.7",
     "pymonocypher>=4.0.2.5",
+    "pyside6~=6.8",
     "reedsolo>=1.7.0",
 ]

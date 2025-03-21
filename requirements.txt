@@ -4,3 +4,4 @@ numpy~=2.2.3
 reedsolo~=1.7.0
 pyggwave~=0.4.2.6
 pymonocypher~=4.0.2.5
+npyscreen~=4.10.5

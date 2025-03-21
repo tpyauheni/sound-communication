@@ -1,6 +1,8 @@
 import time
 import threading
 
+from log import LOGGER
+
 
 class Stream:
     def can_read(self) -> bool:
@@ -60,13 +62,19 @@ class BufferedStream(Stream):
             if length <= len(self.input_buffer):
                 data: bytes = self.input_buffer[:length]
                 self.input_buffer = self.input_buffer[length:]
+
                 if len(self.input_buffer) > 0:
-                    print('There is remaining data in input buffer after read:', len(self.input_buffer))
+                    LOGGER.verbose_warning('There is remaining data in input buffer after read:', len(self.input_buffer))
+                else:
+                    LOGGER.ok('There is no remaining data in input buffer after data read')
+
+                LOGGER.verbose_stream('Data was read:', data)
                 return data
 
             if not block:
                 data: bytes = self.input_buffer
                 self.input_buffer = bytes()
+                LOGGER.verbose_stream('Data was read (non-blocking):', data)
                 return data
 
         while length > len(self.input_buffer):
@@ -75,15 +83,22 @@ class BufferedStream(Stream):
         with self.input_lock:
             data: bytes = self.input_buffer[:length]
             self.input_buffer = self.input_buffer[length:]
+
             if len(self.input_buffer) > 0:
-                print('There is remaining data in input buffer after read:', len(self.input_buffer))
+                LOGGER.verbose_warning('There is remaining data in input buffer after read:', len(self.input_buffer))
+            else:
+                LOGGER.ok('There is no remaining data in input buffer after data read')
+
+            LOGGER.verbose_stream('Data was read (blocking):', data)
             return data
 
     def can_write(self) -> bool:
         return self._turn_write
 
     def write(self, data: bytes, block: bool = True, precision: float = 0.05) -> None:
+        LOGGER.verbose_stream('Appending data:', data)
         self.output_buffer.append(data)
+        LOGGER.verbose_stream('Total data:', self.output_buffer)
 
         if not block:
             return
