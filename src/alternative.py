@@ -38,9 +38,6 @@ class AlternativeStream(BufferedStream):
     receiving_start: float | None = None
 
     def _libasound_error_handler(self, filename: bytes, line: bytes, function: bytes, err: int, fmt: bytes, *args) -> None:
-        if '--disable-log' in sys.argv:
-            return
-
         LOGGER.error_pyaudio('libasound:', f'{filename.decode()}:{line}:', f'{function.decode()}', err, fmt.decode().replace('%s', '?'))
 
     def __init__(self, turn_write: bool, fake: bool = False) -> None:
@@ -646,6 +643,8 @@ class ReliableTransceiver:
 def sender() -> None:
     if '--disable-log' in sys.argv:
         GGWave.disable_log()
+        LOGGER.log_tags = ['I', 'W', 'E1']
+        LOGGER.traceback_tags = LOGGER.LOG_NOTHING
 
     LOGGER.add_global_prefix('Sender')
     stream: AlternativeStream = AlternativeStream(True)
@@ -667,6 +666,8 @@ def sender() -> None:
 def receiver() -> None:
     if '--disable-log' in sys.argv:
         GGWave.disable_log()
+        LOGGER.log_tags = ['I', 'W', 'E1']
+        LOGGER.traceback_tags = LOGGER.LOG_NOTHING
 
     LOGGER.add_global_prefix('Receiver')
     stream: AlternativeStream = AlternativeStream(False)
