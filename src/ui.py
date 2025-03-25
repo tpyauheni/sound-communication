@@ -21,7 +21,7 @@ class UIProcessor(NPSApp):
     def main(self) -> None:
         self.form = Form(name="SoundCommunication")
         self.status_label = self.form.add(FixedText, value='Status: idle', editable=False)
-        self.message_input = self.form.add(MultiLineEdit, name='Message:', max_height=40)
+        self.message_input = self.form.add(MultiLineEdit, name='Message:', max_height=20)
         self.send_text_button = self.form.add(ButtonPress, name='Send text', when_pressed_function=self._on_send_text_button_pressed)
         self.send_file_button = self.form.add(ButtonPress, name='Send file', when_pressed_function=self._on_send_file_button_pressed)
         self.receive_button = self.form.add(ButtonPress, name='Receive data', when_pressed_function=self._on_receive_button_pressed)
