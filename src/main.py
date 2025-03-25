@@ -3,6 +3,7 @@ Sound communication.
 """
 
 import time
+import sys
 from typing import Any
 
 import numpy as np
@@ -10,10 +11,14 @@ from numpy.typing import NDArray
 
 from error_corrector import ErrorCorrector
 from listener import SoundListener, SoundListenerSync, fourie_transform
+from log import LOGGER
 from optional.visualize import Visualizer
 
 from soundcom.audio import SoundBatch
 from soundcom.audioconsts import Freq
+
+import alternative as alt
+import gui
 
 # Treshold which is used to indicate whether bit is considered ON
 # If set too low, it may assume environmental noise as a sent bit.
@@ -105,7 +110,7 @@ class SoundSender:
         for chunked_bytes in [message_bytes]:
             # ec_bytes: bytes = ErrorCorrector(chunked_bytes).encode()
             ec_bytes = chunked_bytes
-            print(ec_bytes)
+            LOGGER.verbose('Sending chunk:', ec_bytes)
             message_bits: list[bool] = []
 
             for byte in ec_bytes:
@@ -119,7 +124,7 @@ class SoundSender:
             while len(message_bit_groups) >= self.freq.CHUNKS_COUNT:
                 freq_buffer: list[float] = self.freq.data_list(message_bit_groups[:self.freq.CHUNKS_COUNT])
                 message_bit_groups = message_bit_groups[self.freq.CHUNKS_COUNT:]
-                print(freq_buffer)
+                LOGGER.info('Frequencies:', freq_buffer)
                 self.batch.enqueue(freq_buffer)
 
             if len(message_bit_groups) > 0:
@@ -127,12 +132,12 @@ class SoundSender:
                     message_bit_groups.append([False for _j in range(self.freq.CHUNK_LENGTH)])
 
                 freq_buffer: list[float] = self.freq.data_list(message_bit_groups)
-                print(freq_buffer)
+                LOGGER.info('Frequencies (last):', freq_buffer)
                 self.batch.enqueue(freq_buffer)
 
         self.batch.enqueue([self.freq.msg_bit()])
         self.batch.wait()
-        print('Message sent')
+        LOGGER.info('Message sent')
 
     def _nearest(self, array: list[float], value: float) -> float:
         """
@@ -290,7 +295,7 @@ class SoundSender:
             return
 
         self.prev_batch_time = time.time() - FIRST_BATCH_DELAY
-        print(f'First batch time (receiver): {self.prev_batch_time}')
+        LOGGER.verbose(f'First batch time (receiver)')
         self.cumulative_input += frame
 
     def _update_receiver(
@@ -319,7 +324,6 @@ class SoundSender:
             self.cumulative_input += frame
             return final_bit_buffer
 
-        print(f'{(time_elapsed - duration):.2f}')
         self.prev_batch_time += duration
 
         fft = fourie_transform(self.cumulative_input)
@@ -333,7 +337,7 @@ class SoundSender:
         message_bit: bool = set_bits[-1]
 
         if message_bit:
-            print('End of message detected')
+            LOGGER.verbose('End of message detected')
 
         self.visualizer.process(fft)
         self.visualizer.process_bits(
@@ -354,7 +358,7 @@ class SoundSender:
             bit_buffer.append(bit)
 
         final_bit_buffer.extend(bit_buffer)
-        print(''.join(['1' if bit else '0' for bit in set_bits]))
+        LOGGER.verbose(''.join(['1' if bit else '0' for bit in set_bits]))
         return final_bit_buffer
 
     def receive_loop(
@@ -381,7 +385,7 @@ class SoundSender:
                 if len(frames) > 10 and self.skip_frames:
                     frame = frames.pop()
                     frames.clear()
-                    print('SKIPPING FRAMES TO SPEED UP')
+                    LOGGER.warning('Skipping frames to speed up')
                 else:
                     frame = frames.pop(0)
 
@@ -411,6 +415,29 @@ class SoundSender:
                 )
                 final_bit_buffer = new_bit_buffer
 
+    def visualize_loop(
+        self,
+    ) -> None:
+        """
+        Visualizes FFT from sound input in an infinite loop if required libraries are installed.
+        """
+
+        self.listener.listen()
+
+        while True:
+            frames: list[bytes] = self.listener.pop_available_frames()
+
+            if len(frames) == 0:
+                continue
+
+            frame = frames.pop()
+            frames.clear()
+            fft = fourie_transform(frame)
+
+            if len(frames) == 0:
+                self.visualizer.process(fft)
+                time.sleep(0.01)
+
     def dispose(self) -> None:
         """
         Cleans up used resources.
@@ -427,35 +454,58 @@ def main() -> None:
     and not imported in any other project.
     """
 
-    sender: SoundSender = SoundSender(duration=0.5)
+    # alt.ReliableTransceiver(alt.AlternativeStream(True, True)).session_start()
+    # return
+    # gui.show()
+
     mode: str
+    fsk_method: str
 
     while True:
-        mode = input(
-            'Select mode [sender / receiver / batch]: ').lower()
+        print(
+            'Select mode [sender / receiver / monitor]:', flush=True)
+        mode: str = input().lower()
 
         match mode:
             case 's' | 'sn' | 'snd' | 'send' | 'sender':
                 mode = 'sender'
+                fsk_method = 'sender.original'
                 break
             case 'r' | 're' | 'rec' | 'recv' | 'receiver':
                 mode = 'receiver'
+                fsk_method = 'receiver.original'
                 break
-            case 'b' | 'bt' | 'batch':
-                mode = 'batch'
+            case 'm' | 'mn' | 'mon' | 'mntr' | 'monitor':
+                mode = 'monitor'
+                fsk_method = 'monitor.original'
                 break
             case _:
                 print('Invalid mode')
 
     try:
         if mode == 'sender':
+            if not mode.endswith('originаl'):
+                alt.sender()
+                return
+
+            sender: SoundSender = SoundSender(duration=0.5)
+
             while True:
-                str_to_transfer: str = input('Enter string to transfer: ')
+                print('Enter string to transfer:', flush=True)
+                str_to_transfer: str = input()
                 sender.send_message(
                     str_to_transfer,
                 )
         elif mode == 'receiver':
+            if not mode.endswith('originаl'):
+                alt.receiver()
+                return
+
+            sender: SoundSender = SoundSender(duration=0.5)
             sender.receive_loop()
+        elif mode == 'monitor':
+            sender: SoundSender = SoundSender()
+            sender.visualize_loop()
         else:
             print('not implemented yet')
             return
@@ -492,10 +542,13 @@ def main() -> None:
 
         sender.dispose()
     except KeyboardInterrupt:
-        sender.dispose()
+        # sender.dispose()
+        pass
     except SystemExit as exc:
-        sender.dispose()
+        # sender.dispose()
         raise exc
+
+    sys.exit(0)
 
 
 if __name__ == '__main__':

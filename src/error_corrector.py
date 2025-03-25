@@ -13,7 +13,7 @@ to connect to other peer.
 from collections.abc import Generator
 import reedsolo  # type: ignore
 
-EC_BLOCK_SIZE = 16
+EC_BLOCK_SIZE = 136
 REDUNDANCY_SIZE = 6
 
 

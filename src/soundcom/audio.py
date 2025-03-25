@@ -14,6 +14,8 @@ from typing import Any
 
 from pyaudio import PyAudio, Stream, paInt16
 
+from log import LOGGER
+
 
 class SoundBatchSync:
     """
@@ -62,7 +64,7 @@ got {volume:.2f}')
         If batch is already being played, queues it again.
         """
         if not self.first_batch_played:
-            print(f'First batch time (sender): {time.time()}')
+            LOGGER.verbose_batch('First batch time (sender)')
 
         self.first_batch_played = True
         self.output_stream.write(sample)
@@ -78,7 +80,7 @@ got {volume:.2f}')
         self.audio.terminate()
 
     def sample_frequencies(self, frequencies: list[float]) -> bytes:
-        print('Sampling:',frequencies)
+        LOGGER.verbose_batch('Sampling:', frequencies)
         samples_count: int = int(self.sampling_rate * self.duration)
         samples: list[float] = [0.0 for _i in range(samples_count)]
 
