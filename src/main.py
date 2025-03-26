@@ -18,7 +18,6 @@ from soundcom.audio import SoundBatch
 from soundcom.audioconsts import Freq
 
 import alternative as alt
-import gui
 
 # Treshold which is used to indicate whether bit is considered ON
 # If set too low, it may assume environmental noise as a sent bit.
