@@ -1,4 +1,5 @@
 import os.path as p
+from numpy import fft
 import pyggwave
 import ast
 
@@ -11,7 +12,9 @@ data_dict2 = {}
 
 def read_to_dict(file_name, dict):
     with open(p.join(p.dirname(p.abspath(__file__)), file_name)) as file:
-        for line in file.readlines():
+        lines = file.readlines()
+
+        for i, line in enumerate(lines):
             skip = True
 
             if 'Writing data' in line and 'Verbose (frame)' in line:
@@ -38,7 +41,20 @@ def read_to_dict(file_name, dict):
             data_index = line.index(' data: ')
             data_str = line[data_index + 7:]
             data = ast.literal_eval(data_str)
-            dict[data.hex()] = (dtime, 'Writing data' in line, len(data), pyggwave.raw__get_ecc_bytes_for_length(len(data)))
+            writer_data = ()
+
+            if 'Writing data' in line:
+                if len(lines) < i + 1:
+                    line2 = lines[i + 1]
+
+                    if line2.startswith('Overall noise sum'):
+                        fft_sum_spl = line2[19:].split(',')
+                        fft_sum = float(fft_sum_spl[0])
+                        fft_data_sum = float(fft_sum_spl[1].split(': ')[1])
+                        data_freqs = float(fft_sum_spl[1].split(': ')[1])
+                        writer_data = (fft_sum, fft_data_sum, data_freqs)
+
+            dict[data.hex()] = (dtime, 'Writing data' in line, len(data), pyggwave.raw__get_ecc_bytes_for_length(len(data)), writer_data)
 
 
 def merge_dicts(dict1, dict2, callback, input_changer):
@@ -79,6 +95,9 @@ sheet1.write(0, 3, 'Packet size')
 sheet1.write(0, 4, 'Error correction size')
 sheet1.write(0, 5, 'Total size')
 sheet1.write(0, 6, 'Average speed')
+sheet1.write(0, 7, 'Average noise')
+sheet1.write(0, 8, 'Data noise')
+sheet1.write(0, 9, 'Data frequency count')
 y = 1
 
 
@@ -92,9 +111,15 @@ def write_to_excel(sender, receiver):
     sheet1.write(y, 2, delta_time)
     sheet1.write(y, 3, sender[2])
     sheet1.write(y, 4, sender[3])
-    total_size = sender[2] + sender[3] + 6
+    total_size = sender[2] + sender[3]
     sheet1.write(y, 5, total_size)
     sheet1.write(y, 6, total_size / delta_time * 8)
+
+    if len(sender[4]) > 0:
+        sheet1.write(y, 7, sender[4][0])
+        sheet1.write(y, 8, sender[4][1])
+        sheet1.write(y, 9, sender[4][2])
+
     print(f'Row {y}:', sender, receiver)
     y += 1
     return

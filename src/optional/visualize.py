@@ -51,7 +51,8 @@ class Visualizer:
 
         return (x_values[min_index:], values[min_index:])
 
-    def generate_x_values(self, length: int, max_freq: float) -> list[float]:
+    @staticmethod
+    def generate_x_values(length: int, max_freq: float) -> list[float]:
         """
         Generates array of frequencies in range [0; `max_freq`] with total
         length `length`.

@@ -24,6 +24,7 @@ class Logger:
         '*Vw': 'Verbose (warning)',
         '*O': 'OK',
         '*D': 'Debug',
+        'f': 'File-only (slow)',
         'S': 'Spam',
         '': 'Unknown ({0})',
     }
@@ -40,9 +41,10 @@ class Logger:
         'S': '',
         '': '\x1b[35m',
     }
+    LOG_REALLY_EVERYTHING: list[str] = ['']
     LOG_EVERYTHING: list[str] = ['*']
     LOG_NOTHING: list[str] = []
-    DEFAULT_TRACEBACK_TAGS: list[str] = ['E1', 'W', 'Vw']
+    DEFAULT_TRACEBACK_TAGS: list[str] = ['*E1', '*W', '*Vw']
 
     log_tags: list[str]
     log_time_tags: list[str]
@@ -57,8 +59,8 @@ class Logger:
     def __init__(
             self,
             log_tags: list[str] = LOG_EVERYTHING,
-            log_time_tags: list[str] = LOG_EVERYTHING,
-            log_file_tags: list[str] = LOG_EVERYTHING,
+            log_time_tags: list[str] = LOG_REALLY_EVERYTHING,
+            log_file_tags: list[str] = [*LOG_EVERYTHING, 'f'],
             log_stdout_tags: list[str] = LOG_EVERYTHING,
             log_stderr_tags: list[str] = LOG_NOTHING,
             traceback_tags: list[str] = DEFAULT_TRACEBACK_TAGS,
@@ -219,6 +221,12 @@ class Logger:
     def spam(self, *args, **kwargs) -> None:
         self.log('S', *args, **kwargs)
 
+    def file_only(self, *args, **kwargs) -> None:
+        self.log('f', *args, **kwargs)
+
+    def is_logging_slow(self) -> bool:
+        return self._tag_matches('f', self.log_tags)
+
     def enable_all(self) -> None:
         pyggwave.GGWave.enable_log()
         self.log_tags = self.LOG_EVERYTHING
@@ -233,6 +241,6 @@ class Logger:
 #     traceback_tags=Logger.DEFAULT_TRACEBACK_TAGS + ['D']
 # )
 LOGGER: Logger = Logger(
-    Logger.LOG_EVERYTHING,
+    [*Logger.LOG_EVERYTHING, 'f'],
 )
 

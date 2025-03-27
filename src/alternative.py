@@ -11,7 +11,9 @@ import ctypes
 import base64
 
 from error_corrector import REDUNDANCY_SIZE, ErrorCorrector
+from listener import fourie_transform
 from log import LOGGER
+from optional.visualize import Visualizer
 from stream import BufferedStream
 from cryptoec import KeyExchanger, SymmetricKey
 from ui import UIProcessor
@@ -36,6 +38,7 @@ class AlternativeStream(BufferedStream):
     first_packet_time: float | None = None
     send_interval: tuple[float, float]
     receiving_start: float | None = None
+    last_input_block: bytes | None = None
 
     def _libasound_error_handler(self, filename: bytes, line: bytes, function: bytes, err: int, fmt: bytes, *args) -> None:
         LOGGER.error_pyaudio('libasound:', f'{filename.decode()}:{line}:', f'{function.decode()}', err, fmt.decode().replace('%s', '?'))
@@ -115,6 +118,7 @@ class AlternativeStream(BufferedStream):
                     continue
 
                 frame: bytes = self.input_stream.read(1024, exception_on_overflow=False)
+                self.last_input_block = frame
                 data: bytes | None = self.transformer.decode(frame)
 
                 if data:
@@ -184,6 +188,23 @@ class AlternativeStream(BufferedStream):
 
     def _write(self, data: bytes) -> None:
         LOGGER.verbose_frame('Writing data:', data)
+
+        if LOGGER.is_logging_slow() and self.last_input_block is not None:
+            fft = fourie_transform(self.last_input_block)
+            fft_sum: float = sum(fft)
+            xvals = Visualizer.generate_x_values(len(fft), 24_000)
+            fft_data_sum: float = 0.0
+            total_terms: int = 0
+
+            for i, xval in enumerate(xvals):
+                if xval < 15_000.0 or xval > 19_500.0:
+                    continue
+
+                fft_data_sum += float(fft[i])
+                total_terms += 1
+
+            LOGGER.file_only(f'Overall noise sum: {fft_sum}, data channel noise sum: {fft_data_sum}, data frequencies: {total_terms}')
+
         frames: bytes = self.transformer.encode(data, protocol=self.protocol, volume=100)
         self.output_stream.write(frames, len(frames) // 4)
 
