@@ -273,9 +273,10 @@ class ReliableTransceiver:
                 # TODO: Reset everything and try to connect from the very beginning again
                 raise ConnectionAbortedError()
 
-            LOGGER.verbose('Reading data with size 1')
+            LOGGER.spam('Reading data with size 1')
             buffer: bytes = self.stream.read(1, block=False)
-            LOGGER.verbose('Received data:', buffer)
+            if buffer:
+                LOGGER.verbose('Received data:', buffer)
 
             if len(buffer) == 0:
                 time.sleep(precision)
@@ -383,7 +384,7 @@ class ReliableTransceiver:
                 last_resend_time = time.time()
 
             self.stream.turn_read()
-            LOGGER.verbose(f'Waiting for confirmation ({size})...')
+            LOGGER.spam(f'Waiting for confirmation ({size})...')
             buffer: bytes = self.stream.read(size, block=False)
             result += buffer
             size -= len(buffer)
@@ -457,7 +458,8 @@ class ReliableTransceiver:
                 raise ConnectionAbortedError()
 
         data = self.read_insecure(min(len(self.stream.input_buffer) - 1, chunk_size), timeout - time.time() + start_time)
-        LOGGER.verbose('Received data:', data)
+        if data:
+            LOGGER.verbose('Received data:', data)
         size = struct.unpack('<I', data[:4])[0]
         LOGGER.debug('Determined size of next data chunk:', size)
         cipher_buffer: bytes = data[4:]
@@ -643,7 +645,7 @@ class ReliableTransceiver:
 def sender() -> None:
     if '--disable-log' in sys.argv:
         GGWave.disable_log()
-        LOGGER.log_tags = ['I', 'W', 'E1']
+        LOGGER.log_tags = ['*I', '*W', '*E1']
         LOGGER.traceback_tags = LOGGER.LOG_NOTHING
 
     LOGGER.add_global_prefix('Sender')
@@ -666,7 +668,7 @@ def sender() -> None:
 def receiver() -> None:
     if '--disable-log' in sys.argv:
         GGWave.disable_log()
-        LOGGER.log_tags = ['I', 'W', 'E1']
+        LOGGER.log_tags = ['*I', '*W', '*E1']
         LOGGER.traceback_tags = LOGGER.LOG_NOTHING
 
     LOGGER.add_global_prefix('Receiver')

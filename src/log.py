@@ -9,36 +9,38 @@ import pyggwave
 
 class Logger:
     TAG_NAMES: dict[str, str] = {
-        'E3': 'Third-party error',
-        'E3p': 'PyAudio error',
-        'E3g': 'GGWave error',
-        'E1': 'Error',
-        'W': 'Warning',
-        'I': 'Info',
-        'V': 'Verbose',
-        'Vb': 'Verbose (audio)',
-        'Vc': 'Verbose (coder)',
-        'Vf': 'Verbose (frame)',
-        'Vs': 'Verbose (stream)',
-        'Vg': 'Verbose (GGWave)',
-        'Vw': 'Verbose (warning)',
-        'O': 'OK',
-        'D': 'Debug',
+        '*E3': 'Third-party error',
+        '*E3p': 'PyAudio error',
+        '*E3g': 'GGWave error',
+        '*E1': 'Error',
+        '*W': 'Warning',
+        '*I': 'Info',
+        '*V': 'Verbose',
+        '*Vb': 'Verbose (audio)',
+        '*Vc': 'Verbose (coder)',
+        '*Vf': 'Verbose (frame)',
+        '*Vs': 'Verbose (stream)',
+        '*Vg': 'Verbose (GGWave)',
+        '*Vw': 'Verbose (warning)',
+        '*O': 'OK',
+        '*D': 'Debug',
+        'S': 'Spam',
         '': 'Unknown ({0})',
     }
     RESET_COLOR: str = '\x1b[0m'
     COLORS: dict[str, str] = {
-        'E': '\x1b[31m',
-        'E1': '\x1b[1m\x1b[31m',
-        'W': '\x1b[1m\x1b[33m',
-        'I': '\x1b[1m\x1b[34m',
-        'V': '',
-        'Vw': '\x1b[33m',
-        'O': '\x1b[1m\x1b[32m',
-        'D': '\x1b[1m\x1b[35m',
+        '*E': '\x1b[31m',
+        '*E1': '\x1b[1m\x1b[31m',
+        '*W': '\x1b[1m\x1b[33m',
+        '*I': '\x1b[1m\x1b[34m',
+        '*V': '',
+        '*Vw': '\x1b[33m',
+        '*O': '\x1b[1m\x1b[32m',
+        '*D': '\x1b[1m\x1b[35m',
+        'S': '',
         '': '\x1b[35m',
     }
-    LOG_EVERYTHING: list[str] = ['']
+    LOG_EVERYTHING: list[str] = ['*']
     LOG_NOTHING: list[str] = []
     DEFAULT_TRACEBACK_TAGS: list[str] = ['E1', 'W', 'Vw']
 
@@ -170,49 +172,52 @@ class Logger:
         """
         Used to log error from third-party library, hardware or OS itself.
         """
-        self.log('E3', *args, **kwargs)
+        self.log('*E3', *args, **kwargs)
 
     def error_pyaudio(self, *args, **kwargs) -> None:
-        self.log('E3p', *args, **kwargs)
+        self.log('*E3p', *args, **kwargs)
 
     def error_ggwave(self, *args, **kwargs) -> None:
-        self.log('E3g', *args, **kwargs)
+        self.log('*E3g', *args, **kwargs)
 
     def error(self, *args, **kwargs) -> None:
-        self.log('E1', *args, **kwargs)
+        self.log('*E1', *args, **kwargs)
 
     def warning(self, *args, **kwargs) -> None:
-        self.log('W', *args, **kwargs)
+        self.log('*W', *args, **kwargs)
 
     def info(self, *args, **kwargs) -> None:
-        self.log('I', *args, **kwargs)
+        self.log('*I', *args, **kwargs)
 
     def verbose(self, *args, **kwargs) -> None:
-        self.log('V', *args, **kwargs)
+        self.log('*V', *args, **kwargs)
 
     def verbose_batch(self, *args, **kwargs) -> None:
-        self.log('Vb', *args, **kwargs)
+        self.log('*Vb', *args, **kwargs)
 
     def verbose_coder(self, *args, **kwargs) -> None:
-        self.log('Vc', *args, **kwargs)
+        self.log('*Vc', *args, **kwargs)
 
     def verbose_frame(self, *args, **kwargs) -> None:
-        self.log('Vf', *args, **kwargs)
+        self.log('*Vf', *args, **kwargs)
 
     def verbose_stream(self, *args, **kwargs) -> None:
-        self.log('Vs', *args, **kwargs)
+        self.log('*Vs', *args, **kwargs)
 
     def verbose_ggwave(self, *args, **kwargs) -> None:
-        self.log('Vg', *args, **kwargs)
+        self.log('*Vg', *args, **kwargs)
 
     def verbose_warning(self, *args, **kwargs) -> None:
-        self.log('Vw', *args, **kwargs)
+        self.log('*Vw', *args, **kwargs)
 
     def ok(self, *args, **kwargs) -> None:
-        self.log('O', *args, **kwargs)
+        self.log('*O', *args, **kwargs)
 
     def debug(self, *args, **kwargs) -> None:
-        self.log('D', *args, **kwargs)
+        self.log('*D', *args, **kwargs)
+
+    def spam(self, *args, **kwargs) -> None:
+        self.log('S', *args, **kwargs)
 
     def enable_all(self) -> None:
         pyggwave.GGWave.enable_log()
@@ -228,6 +233,6 @@ class Logger:
 #     traceback_tags=Logger.DEFAULT_TRACEBACK_TAGS + ['D']
 # )
 LOGGER: Logger = Logger(
-    ['I', 'W', 'E', 'O'],
+    Logger.LOG_EVERYTHING,
 )
 

@@ -74,7 +74,8 @@ class BufferedStream(Stream):
             if not block:
                 data: bytes = self.input_buffer
                 self.input_buffer = bytes()
-                LOGGER.verbose_stream('Data was read (non-blocking):', data)
+                if len(data):
+                    LOGGER.verbose_stream('Data was read (non-blocking):', data)
                 return data
 
         while length > len(self.input_buffer):
@@ -89,7 +90,8 @@ class BufferedStream(Stream):
             else:
                 LOGGER.ok('There is no remaining data in input buffer after data read')
 
-            LOGGER.verbose_stream('Data was read (blocking):', data)
+            if len(data):
+                LOGGER.verbose_stream('Data was read (blocking):', data)
             return data
 
     def can_write(self) -> bool:

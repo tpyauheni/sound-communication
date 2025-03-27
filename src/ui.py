@@ -14,7 +14,7 @@ class UIProcessor(NPSApp):
 
         self.transceiver = transceiver
 
-        LOGGER.log_stdout_tags.clear()
+        # LOGGER.log_stdout_tags.clear()
         LOGGER.log_stderr_tags.clear()
         pyggwave.GGWave.disable_log()
 
